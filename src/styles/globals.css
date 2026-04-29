@@ -1,26 +1,207 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ============================================================
+   Orchestra AI Design System — Tailwind v4 @theme tokens
+   ============================================================ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ── Colours ── */
+  --color-slate-950:  #020617;
+  --color-slate-900:  #0f172a;
+  --color-slate-800:  #1e293b;
+  --color-slate-700:  #334155;
+  --color-slate-600:  #475569;
+  --color-slate-400:  #94a3b8;
+  --color-slate-200:  #e2e8f0;
+  --color-slate-50:   #f8fafc;
+  --color-indigo:     #6366F1;
+  --color-indigo-400: #818CF8;
+  --color-indigo-600: #4F46E5;
+  --color-cyan:       #22D3EE;
+  --color-cyan-400:   #67E8F9;
+
+  /* ── Typography ──
+     NOTE: Use full stacks (not bare "Inter") to avoid Tailwind v4 auto-importing
+     Google Fonts via @import url() which cannot precede the generated CSS rules. */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ── Radii ── */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-pill: 24px;
+  --radius-full: 9999px;
+
+  /* ── Spacing extras ── */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================================
+   Base / Reset
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-slate-950);
+  color: var(--color-slate-50);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Mobile-first: prevent iOS rubber-band on the shell */
+  overscroll-behavior: none;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ============================================================
+   Typography scale
+   ============================================================ */
+.text-display   { font-size: 32px; line-height: 40px; font-weight: 600; }
+.text-headline  { font-size: 20px; line-height: 28px; font-weight: 700; }
+.text-body-lg   { font-size: 16px; line-height: 24px; font-weight: 400; }
+.text-body-sm   { font-size: 14px; line-height: 20px; font-weight: 500; }
+.text-label     { font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.text-mono      { font-size: 12px; line-height: 16px; font-family: var(--font-mono); }
+
+/* ============================================================
+   Component primitives
+   ============================================================ */
+
+/* Glassmorphism surface */
+.glass {
+  background: rgba(15, 23, 42, 0.60);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(99, 102, 241, 0.12);
 }
+
+/* Elevated card */
+.card {
+  background: var(--color-slate-900);
+  border: 1px solid var(--color-slate-800);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+/* Primary CTA button */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 56px;
+  background: var(--color-indigo);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+}
+.btn-primary:hover  { background: var(--color-indigo-600); box-shadow: 0 0 24px rgba(99,102,241,0.4); }
+.btn-primary:active { transform: scale(0.98); }
+
+/* Secondary ghost button */
+.btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 48px;
+  background: transparent;
+  color: var(--color-slate-400);
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid var(--color-slate-800);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.btn-ghost:hover { border-color: var(--color-indigo-400); color: var(--color-indigo-400); }
+
+/* Input / Select */
+.input {
+  width: 100%;
+  height: 48px;
+  background: var(--color-slate-900);
+  border: 1px solid var(--color-slate-800);
+  border-radius: var(--radius-md);
+  color: var(--color-slate-50);
+  font-size: 16px;
+  padding: 0 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.input:focus { border-color: var(--color-indigo); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+.textarea {
+  width: 100%;
+  background: var(--color-slate-900);
+  border: 1px solid var(--color-slate-800);
+  border-radius: var(--radius-md);
+  color: var(--color-slate-50);
+  font-size: 16px;
+  padding: 12px 14px;
+  outline: none;
+  resize: vertical;
+  font-family: var(--font-sans);
+  transition: border-color 0.2s ease;
+}
+.textarea:focus { border-color: var(--color-indigo); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0   rgba(99,102,241,0.5); }
+  70%  { box-shadow: 0 0 0 12px rgba(99,102,241,0); }
+  100% { box-shadow: 0 0 0 0   rgba(99,102,241,0); }
+}
+@keyframes gradient-shift {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+@keyframes fade-in-up {
+  from { opacity:0; transform: translateY(16px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes dot-blink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40%           { opacity: 1; }
+}
+
+.animate-pulse-ring   { animation: pulse-ring 1.5s ease-out infinite; }
+.animate-fade-in-up   { animation: fade-in-up 0.4s ease-out both; }
+.animate-spin-slow    { animation: spin-slow 3s linear infinite; }
+.animate-dot          { animation: dot-blink 1.2s ease-in-out infinite both; }
+.animation-delay-200  { animation-delay: 0.2s; }
+.animation-delay-400  { animation-delay: 0.4s; }
+
+/* Indigo glow utility */
+.glow-indigo { box-shadow: 0 0 20px rgba(99,102,241,0.35), 0 0 60px rgba(99,102,241,0.15); }
+.glow-cyan   { box-shadow: 0 0 16px rgba(34,211,238,0.4); }
+
+/* ============================================================
+   Layout utilities
+   ============================================================ */
+.page-x-padding { padding-left: 20px; padding-right: 20px; }
+.safe-bottom    { padding-bottom: env(safe-area-inset-bottom, 16px); }
+
+/* ============================================================
+   Scrollbar — thin dark
+   ============================================================ */
+::-webkit-scrollbar           { width: 4px; height: 4px; }
+::-webkit-scrollbar-track     { background: transparent; }
+::-webkit-scrollbar-thumb     { background: var(--color-slate-700); border-radius: 4px; }
+
+/* ============================================================
+   Selection colour
+   ============================================================ */
+::selection { background: rgba(99,102,241,0.3); color: var(--color-slate-50); }
