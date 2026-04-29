@@ -1,8 +1,12 @@
 /**
  * videoGenerator.ts
  * ------------------
- * Generates a .webm video from an array of image URLs using the browser's
+ * Generates a video from an array of image URLs using the browser's
  * Canvas API + MediaRecorder API.
+ *
+ * Format support:
+ *  - Chrome/Firefox/Android: WebM (VP9 + Opus) — best quality
+ *  - iOS Safari (iPhone/iPad): MP4 (H.264) — only supported format
  *
  * Features:
  *  - Ken Burns (slow pan + zoom) per image
@@ -195,8 +199,21 @@ export async function generateVideoFromImages(
       videoStream.addTrack(audioTrack);
     }
 
-    const mimeType =
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+    /*
+     * MIME type selection:
+     *  - iOS Safari does NOT support WebM at all (neither recording nor playback).
+     *  - iOS MediaRecorder only supports video/mp4 with H.264 (avc1).
+     *  - We detect iOS via the User Agent and force MP4 there.
+     *  - On all other browsers we prefer WebM VP9+Opus for quality.
+     */
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    const mimeType = isIOS
+      ? (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1")
+          ? "video/mp4;codecs=avc1"
+          : "video/mp4")
+      : MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
         ? "video/webm;codecs=vp8,opus"

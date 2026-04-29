@@ -3,6 +3,12 @@ import { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useOrchestrationStore } from "@/store/orchestrationStore";
 
+/* Detect iOS once at module level */
+const IS_IOS =
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 export default function VideoPreview() {
   const generatedScript   = useOrchestrationStore((s) => s.generatedScript);
   const generatedVideoUrl = useOrchestrationStore((s) => s.generatedVideoUrl);
@@ -11,8 +17,9 @@ export default function VideoPreview() {
   const resetAgents       = useOrchestrationStore((s) => s.resetAgents);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying]     = useState(false);
-  const [shareMsg, setShareMsg]   = useState("");
+  const [playing, setPlaying]         = useState(false);
+  const [muted,   setMuted]           = useState(true);   // start muted for iOS autoplay
+  const [shareMsg, setShareMsg]       = useState("");
   const [downloadReady, setDownloadReady] = useState(false);
 
   // Auto-load the generated video
@@ -23,6 +30,11 @@ export default function VideoPreview() {
     }
   }, [generatedVideoUrl]);
 
+  // Keep the DOM video element in sync with muted state
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (playing) {
@@ -32,6 +44,8 @@ export default function VideoPreview() {
     }
     setPlaying((p) => !p);
   };
+
+  const toggleMute = () => setMuted((m) => !m);
 
   const handleRefine = () => {
     resetAgents();
@@ -45,9 +59,10 @@ export default function VideoPreview() {
 
   const handleDownload = () => {
     if (!generatedVideoUrl) return;
+    const ext = IS_IOS ? "mp4" : "webm";
     const a = document.createElement("a");
     a.href     = generatedVideoUrl;
-    a.download = `orchestra-ai-${Date.now()}.webm`;
+    a.download = `orchestra-ai-${Date.now()}.${ext}`;
     a.click();
   };
 
@@ -60,6 +75,7 @@ export default function VideoPreview() {
   }
 
   const isVideoBlob = generatedVideoUrl?.startsWith("blob:");
+  const fileFormat  = IS_IOS ? "MP4" : "WebM";
 
   return (
     <motion.section
@@ -96,9 +112,31 @@ export default function VideoPreview() {
               Video generated from your uploads
             </p>
             <p className="text-mono" style={{ margin: 0, color: "var(--color-slate-400)" }}>
-              Canvas render · WebM · 🎵 Mood audio · 💬 Captions
+              Canvas render · {fileFormat} · 🎵 Mood audio · 💬 Captions
             </p>
           </div>
+        </motion.div>
+      )}
+
+      {/* iOS warning — shown only on iPhone/iPad */}
+      {IS_IOS && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "10px",
+            padding: "10px 14px",
+            background: "rgba(251,191,36,0.07)",
+            border: "1px solid rgba(251,191,36,0.25)",
+            borderRadius: "10px",
+          }}
+        >
+          <span style={{ fontSize: "16px", flexShrink: 0 }}>📱</span>
+          <p className="text-mono" style={{ margin: 0, color: "rgba(251,191,36,0.9)", lineHeight: "1.5" }}>
+            iOS uses MP4 format for recording &amp; playback. Tap <strong>▶</strong> then the 🔊 button to unmute.
+          </p>
         </motion.div>
       )}
 
@@ -123,10 +161,12 @@ export default function VideoPreview() {
             id="preview-video"
             loop
             playsInline
+            muted          /* Required for iOS autoplay — controlled via JS .muted */
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
           >
+            <source src={generatedVideoUrl} type={IS_IOS ? "video/mp4" : "video/webm"} />
             <source src={generatedVideoUrl} />
           </video>
         ) : (
@@ -225,44 +265,91 @@ export default function VideoPreview() {
           AI GEN
         </div>
 
-        {/* Play/Pause pill */}
+        {/* Play/Pause + Mute row */}
         {generatedVideoUrl && (
-          <button
-            id="btn-play-pause"
-            aria-label={playing ? "Pause" : "Play"}
-            onClick={togglePlay}
+          <div
             style={{
               position: "absolute",
               left: "50%",
               bottom: "60px",
               transform: "translateX(-50%)",
-              background: "rgba(255,255,255,0.15)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-              borderRadius: "28px",
-              padding: "10px 24px",
-              color: "white",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              whiteSpace: "nowrap",
             }}
           >
-            {playing ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            )}
-            {playing ? "Pause" : "Play Preview"}
-          </button>
+            {/* Play/Pause pill */}
+            <button
+              id="btn-play-pause"
+              aria-label={playing ? "Pause" : "Play"}
+              onClick={togglePlay}
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.2)",
+                borderRadius: "28px",
+                padding: "10px 24px",
+                color: "white",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {playing ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              )}
+              {playing ? "Pause" : "Play"}
+            </button>
+
+            {/* Mute toggle — always visible so users can unmute */}
+            <button
+              id="btn-mute-toggle"
+              aria-label={muted ? "Unmute" : "Mute"}
+              onClick={toggleMute}
+              style={{
+                background: muted ? "rgba(255,255,255,0.10)" : "rgba(34,211,238,0.25)",
+                backdropFilter: "blur(12px)",
+                border: `1px solid ${muted ? "rgba(255,255,255,0.15)" : "rgba(34,211,238,0.5)"}`,
+                borderRadius: "50%",
+                width: "42px",
+                height: "42px",
+                color: "white",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                transition: "background 0.2s, border-color 0.2s",
+              }}
+            >
+              {muted ? (
+                /* Muted icon */
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </svg>
+              ) : (
+                /* Unmuted icon */
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+              )}
+            </button>
+          </div>
         )}
       </div>
 
@@ -292,7 +379,7 @@ export default function VideoPreview() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download Video (.webm)
+            Download Video (.{IS_IOS ? "mp4" : "webm"})
           </button>
         )}
 

@@ -3,15 +3,12 @@ import { useRef, useCallback, useState, DragEvent } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOrchestrationStore, MediaItem } from "@/store/orchestrationStore";
+import { compressAll, TOTAL_SIZE_LIMIT, PER_FILE_SIZE_LIMIT } from "@/lib/imageCompressor";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+
 
 function fileToMediaItem(file: File): MediaItem {
   return {
@@ -19,9 +16,15 @@ function fileToMediaItem(file: File): MediaItem {
     url: URL.createObjectURL(file),
     name: file.name,
     type: file.type.startsWith("video/") ? "video" : "photo",
-    selected: true,   // auto-select on upload
+    selected: true,
     size: file.size,
   };
+}
+
+/** Human-readable size label for the budget bar */
+function sizeLabel(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -231,7 +234,7 @@ function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
           <span style={{ color: "var(--color-indigo-400)", fontWeight: 600 }}>browse</span>
         </p>
         <p style={{ margin: "8px 0 0", color: "var(--color-slate-600)", fontSize: "11px", letterSpacing: "0.03em" }}>
-          JPG · PNG · WEBP · MP4 · MOV · WEBM
+          JPG · PNG · WEBP · MP4 · MOV &nbsp;·&nbsp; <strong style={{ color: "var(--color-slate-500)" }}>Max 5 MB total</strong>
         </p>
       </div>
 
@@ -258,18 +261,59 @@ export default function MediaGrid() {
   const setStep       = useOrchestrationStore((s) => s.setStep);
   const clearMediaItems = useOrchestrationStore((s) => s.clearMediaItems);
 
-  const handleFiles = useCallback((fileList: FileList) => {
-    const items: MediaItem[] = [];
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      // 100 MB per file limit
-      if (file.size > 100 * 1024 * 1024) continue;
-      items.push(fileToMediaItem(file));
+  const [compressing, setCompressing] = useState(false);
+  const [sizeError, setSizeError]     = useState("");
+
+  const handleFiles = useCallback(async (fileList: FileList) => {
+    setSizeError("");
+    const raw = Array.from(fileList);
+
+    // Separate images and videos
+    const imageFiles = raw.filter((f) => f.type.startsWith("image/"));
+    const videoFiles = raw.filter((f) => f.type.startsWith("video/"));
+
+    // Per-video limit: 50 MB
+    const validVideos = videoFiles.filter((f) => f.size <= 50 * 1024 * 1024);
+
+    setCompressing(imageFiles.length > 0);
+    let compressed: File[] = [];
+    try {
+      compressed = await compressAll(imageFiles);
+    } catch {
+      compressed = imageFiles; // fallback: use originals
     }
-    if (items.length > 0) addMediaItems(items);
+    setCompressing(false);
+
+    const allFiles = [...compressed, ...validVideos];
+
+    // Enforce per-file limit for images
+    const withinPerFile = allFiles.filter((f) => {
+      if (f.type.startsWith("video/")) return true;
+      return f.size <= PER_FILE_SIZE_LIMIT;
+    });
+
+    // Enforce total 5 MB budget (existing + new)
+    const existingTotal = useOrchestrationStore.getState().mediaItems.reduce((s, m) => s + m.size, 0);
+    const approved: File[] = [];
+    let running = existingTotal;
+    for (const f of withinPerFile) {
+      if (running + f.size <= TOTAL_SIZE_LIMIT) {
+        approved.push(f);
+        running += f.size;
+      } else {
+        setSizeError(`⚠️ 5 MB total limit reached — ${withinPerFile.length - approved.length} file(s) skipped. Remove some files to add more.`);
+        break;
+      }
+    }
+
+    if (approved.length > 0) {
+      addMediaItems(approved.map(fileToMediaItem));
+    }
   }, [addMediaItems]);
 
-  const totalSize = mediaItems.reduce((s, m) => s + m.size, 0);
+  const totalSize  = mediaItems.reduce((s, m) => s + m.size, 0);
+  const sizePct    = Math.min(100, (totalSize / TOTAL_SIZE_LIMIT) * 100);
+  const sizeColor  = sizePct > 90 ? "#EF4444" : sizePct > 70 ? "#F59E0B" : "var(--color-cyan)";
 
   return (
     <section style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -286,41 +330,83 @@ export default function MediaGrid() {
       {/* Drop zone */}
       <DropZone onFiles={handleFiles} />
 
-      {/* Stats row */}
+      {/* Stats row + size budget bar */}
       {mediaItems.length > 0 && (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "10px 14px",
+            flexDirection: "column",
+            gap: "8px",
+            padding: "12px 14px",
             background: "var(--color-slate-900)",
             border: "1px solid var(--color-slate-800)",
             borderRadius: "10px",
           }}
         >
-          <div style={{ display: "flex", gap: "16px" }}>
-            <span className="text-body-sm" style={{ color: "var(--color-slate-50)", fontWeight: 600 }}>
-              {mediaItems.length} file{mediaItems.length > 1 ? "s" : ""}
-            </span>
-            <span className="text-mono" style={{ color: "var(--color-slate-400)" }}>
-              {formatBytes(totalSize)}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <span className="text-body-sm" style={{ color: "var(--color-slate-50)", fontWeight: 600 }}>
+                {mediaItems.length} file{mediaItems.length > 1 ? "s" : ""}
+              </span>
+              <span className="text-mono" style={{ color: sizeColor, fontWeight: 600 }}>
+                {sizeLabel(totalSize)} / 5 MB
+              </span>
+            </div>
+            <button
+              onClick={clearMediaItems}
+              style={{ background: "none", border: "none", color: "var(--color-slate-600)", fontSize: "12px", cursor: "pointer", padding: "2px 6px" }}
+            >
+              Clear all
+            </button>
           </div>
-          <button
-            onClick={clearMediaItems}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--color-slate-600)",
-              fontSize: "12px",
-              cursor: "pointer",
-              padding: "2px 6px",
-            }}
-          >
-            Clear all
-          </button>
+
+          {/* Budget progress bar */}
+          <div style={{ height: "4px", background: "var(--color-slate-800)", borderRadius: "2px", overflow: "hidden" }}>
+            <motion.div
+              animate={{ width: `${sizePct}%` }}
+              transition={{ duration: 0.4 }}
+              style={{ height: "100%", background: sizeColor, borderRadius: "2px", transition: "background 0.3s" }}
+            />
+          </div>
         </div>
+      )}
+
+      {/* Compression indicator */}
+      {compressing && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "10px 14px",
+            background: "rgba(99,102,241,0.08)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            borderRadius: "10px",
+          }}
+        >
+          <div className="animate-spin-slow" style={{ fontSize: "16px" }}>⚙️</div>
+          <p className="text-body-sm" style={{ margin: 0, color: "var(--color-indigo-400)" }}>
+            Compressing images to fit under 5 MB…
+          </p>
+        </motion.div>
+      )}
+
+      {/* Size error */}
+      {sizeError && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            padding: "10px 14px",
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: "10px",
+          }}
+        >
+          <p className="text-body-sm" style={{ margin: 0, color: "#FCA5A5" }}>{sizeError}</p>
+        </motion.div>
       )}
 
       {/* Grid */}
