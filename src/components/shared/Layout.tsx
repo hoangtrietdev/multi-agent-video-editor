@@ -47,13 +47,15 @@ export default function Layout({
         {/* Top App Bar */}
         <TopAppBar title={title === "Orchestra AI" ? "Orchestra AI" : title} />
 
-        {/* Main content — scrollable, padded above TopBar and below BottomBar */}
+        {/* Main content — scrollable, offset by the total header & footer heights */}
         <main
           style={{
             flex: 1,
             overflowY: "auto",
-            paddingTop: "64px",
-            paddingBottom: "80px",
+            /* Push content below the fixed header (bar + safe-area inset) */
+            paddingTop: "var(--topbar-total)",
+            /* Keep content above the fixed footer (bar + home-indicator inset) */
+            paddingBottom: "var(--bottombar-total)",
           }}
         >
           {children}

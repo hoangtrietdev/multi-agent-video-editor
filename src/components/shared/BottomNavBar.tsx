@@ -64,16 +64,18 @@ export default function BottomNavBar() {
         transform: "translateX(-50%)",
         width: "100%",
         maxWidth: "480px",
-        height: "80px",
+        /* Total height = visible nav + device bottom inset (home indicator) */
+        height: "var(--bottombar-total)",
         zIndex: 50,
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",  /* buttons sit at top, safe-area at bottom */
         justifyContent: "space-around",
-        background: "rgba(2, 6, 23, 0.80)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background: "rgba(2, 6, 23, 0.85)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
         borderTop: "1px solid rgba(99, 102, 241, 0.10)",
-        paddingBottom: "env(safe-area-inset-bottom, 8px)",
+        /* Bottom padding = home-indicator / gesture bar inset */
+        paddingBottom: "var(--sab)",
       }}
     >
       {navItems.map((item) => {

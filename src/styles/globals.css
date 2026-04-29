@@ -42,6 +42,27 @@
    ============================================================ */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* ── Safe-area environment variables ──
+   --sat / --sab resolve to the device's notch/Dynamic-Island/home-indicator
+   insets on iOS & Android. On desktop they resolve to 0.
+   Using a fallback of 0px keeps them from becoming `unset`. */
+:root {
+  --sat: env(safe-area-inset-top,    0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left,   0px);
+  --sar: env(safe-area-inset-right,  0px);
+
+  /* TopAppBar visible height (content, not the safe-area padding above it) */
+  --topbar-h: 56px;
+  /* Total fixed header space = bar height + device top inset */
+  --topbar-total: calc(var(--topbar-h) + var(--sat));
+
+  /* BottomNavBar visible height */
+  --bottombar-h: 64px;
+  /* Total fixed footer space = bar height + device bottom inset */
+  --bottombar-total: calc(var(--bottombar-h) + var(--sab));
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -192,7 +213,8 @@ html, body {
    Layout utilities
    ============================================================ */
 .page-x-padding { padding-left: 20px; padding-right: 20px; }
-.safe-bottom    { padding-bottom: env(safe-area-inset-bottom, 16px); }
+.safe-top       { padding-top:    var(--sat); }
+.safe-bottom    { padding-bottom: var(--sab); }
 
 /* ============================================================
    Scrollbar — thin dark
