@@ -30,38 +30,77 @@ export interface CaptionSegment {
   type: "hook" | "body" | "cta";
 }
 
+/** Truncate text to at most maxWords words, appending "…" if cut. */
+function truncate(text: string, maxWords: number): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text.trim();
+  return words.slice(0, maxWords).join(" ") + "…";
+}
+
 /**
  * Build a caption schedule from the raw Groq script JSON.
- * Falls back gracefully if the script is not valid JSON.
+ *
+ * Rules (prevent overlaps):
+ *  - Exactly ONE caption per image frame (enforced via slot Map).
+ *  - Hook  → always slot 0.
+ *  - CTA   → always last slot (imageCount - 1), but only if it doesn't
+ *             collide with the hook (i.e. imageCount >= 2).
+ *  - Body  → distributed across "middle" slots (1 … imageCount-2).
+ *             Only possible when imageCount >= 3.
+ *  - Each body line is truncated to 8 words so captions stay readable.
  */
 export function buildCaptions(scriptJson: string, imageCount: number): CaptionSegment[] {
-  const captions: CaptionSegment[] = [];
-  if (!scriptJson || imageCount === 0) return captions;
+  if (!scriptJson || imageCount === 0) return [];
 
   let parsed: Record<string, string> = {};
-  try { parsed = JSON.parse(scriptJson); } catch { return captions; }
+  try { parsed = JSON.parse(scriptJson); } catch { return []; }
 
-  // Hook always on first frame
-  if (parsed.hook) captions.push({ text: parsed.hook, imageIndex: 0, type: "hook" });
+  // Slot map: imageIndex → one CaptionSegment. Later writes win (overwrite).
+  const slots = new Map<number, CaptionSegment>();
 
-  // Body: split by period or ". Scene" or "Scene N:"
-  if (parsed.body) {
-    const scenes = parsed.body
-      .split(/Scene\s+\d+[:.]/i)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    scenes.forEach((scene, i) => {
-      const imgIdx = Math.min(i + 1, imageCount - 1);
-      captions.push({ text: scene, imageIndex: imgIdx, type: "body" });
+  /* 1 — Hook on frame 0 */
+  if (parsed.hook) {
+    slots.set(0, {
+      text: truncate(parsed.hook, 10),
+      imageIndex: 0,
+      type: "hook",
     });
   }
 
-  // CTA on last frame
-  if (parsed.cta) {
-    captions.push({ text: parsed.cta, imageIndex: imageCount - 1, type: "cta" });
+  /* 2 — CTA on last frame (only if it's a different frame from hook) */
+  const lastFrame = imageCount - 1;
+  if (parsed.cta && lastFrame > 0) {
+    slots.set(lastFrame, {
+      text: truncate(parsed.cta, 8),
+      imageIndex: lastFrame,
+      type: "cta",
+    });
   }
 
-  return captions;
+  /* 3 — Body scenes in middle frames (frames 1 … imageCount-2).
+         Only available when imageCount >= 3. */
+  if (parsed.body && imageCount >= 3) {
+    const scenes = parsed.body
+      .split(/Scene\s*\d*[:.]/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const middleSlots = imageCount - 2; // frames 1 to imageCount-2
+    const take        = Math.min(scenes.length, middleSlots);
+
+    for (let i = 0; i < take; i++) {
+      const frame = i + 1;                   // 1-indexed middle frame
+      if (!slots.has(frame)) {               // never overwrite hook/cta
+        slots.set(frame, {
+          text: truncate(scenes[i], 8),
+          imageIndex: frame,
+          type: "body",
+        });
+      }
+    }
+  }
+
+  return Array.from(slots.values()).sort((a, b) => a.imageIndex - b.imageIndex);
 }
 
 /* ------------------------------------------------------------------ */

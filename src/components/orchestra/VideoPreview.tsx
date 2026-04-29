@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useOrchestrationStore } from "@/store/orchestrationStore";
 
@@ -9,6 +9,29 @@ const IS_IOS =
   (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
+/* ------------------------------------------------------------------ */
+/*  Voice Persona → Web Speech API settings                            */
+/* ------------------------------------------------------------------ */
+interface VoiceConfig { rate: number; pitch: number; volume: number; }
+
+const PERSONA_VOICE: Record<string, VoiceConfig> = {
+  "Cinematic":     { rate: 0.82, pitch: 0.75, volume: 0.85 },  // deep, slow, dramatic
+  "Energetic":     { rate: 1.30, pitch: 1.15, volume: 1.00 },  // fast, punchy
+  "Calm & Smooth": { rate: 0.72, pitch: 0.88, volume: 0.80 },  // slow, relaxed
+  "Inspirational": { rate: 1.00, pitch: 1.05, volume: 0.90 },  // confident, clear
+  "Playful":       { rate: 1.15, pitch: 1.25, volume: 0.90 },  // light, fun
+};
+
+/** Extract the narration text from the generated script JSON. */
+function buildNarration(scriptJson: string): string {
+  try {
+    const d: Record<string, string> = JSON.parse(scriptJson);
+    return [d.hook, d.body, d.cta].filter(Boolean).join(". ");
+  } catch {
+    return scriptJson.slice(0, 400); // raw fallback
+  }
+}
+
 export default function VideoPreview() {
   const generatedScript   = useOrchestrationStore((s) => s.generatedScript);
   const generatedVideoUrl = useOrchestrationStore((s) => s.generatedVideoUrl);
@@ -16,11 +39,74 @@ export default function VideoPreview() {
   const setStep           = useOrchestrationStore((s) => s.setStep);
   const resetAgents       = useOrchestrationStore((s) => s.resetAgents);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying]         = useState(false);
-  const [muted,   setMuted]           = useState(true);   // start muted for iOS autoplay
-  const [shareMsg, setShareMsg]       = useState("");
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const utterRef  = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const [playing, setPlaying]             = useState(false);
+  const [muted,   setMuted]               = useState(true);
+  const [shareMsg, setShareMsg]           = useState("");
   const [downloadReady, setDownloadReady] = useState(false);
+  const [voiceActive, setVoiceActive]     = useState(false);
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => { window.speechSynthesis?.cancel(); };
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  Voice persona narration — video-position-aware                     */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Start narration at a given playback position.
+   *
+   * @param seekRatio  0 = start of script, 0.5 = midpoint, etc.
+   *   Matches video.currentTime / video.duration so voice stays in sync
+   *   with the image timeline after mute/unmute.
+   */
+  const startNarration = useCallback((seekRatio = 0) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const fullText = buildNarration(generatedScript);
+    if (!fullText) return;
+
+    /* ── Seek to the right position in the script ── */
+    let text = fullText;
+    if (seekRatio > 0.03) {                        // >3% in — don't bother seeking for tiny offsets
+      const approxChar = Math.floor(seekRatio * fullText.length);
+
+      // Walk backwards from approxChar to find the start of the nearest sentence
+      // (period / ! / ? followed by a space, or start of a parenthesised clause).
+      const sentenceBreak = /[.!?]\s+/g;
+      let lastBreak = 0;
+      let m: RegExpExecArray | null;
+      while ((m = sentenceBreak.exec(fullText)) !== null) {
+        if (m.index >= approxChar) break;          // overshot — use lastBreak
+        lastBreak = m.index + m[0].length;         // char AFTER the punctuation + space
+      }
+      text = fullText.slice(lastBreak);
+    }
+
+    const utter  = new SpeechSynthesisUtterance(text);
+    const vCfg   = PERSONA_VOICE[config.voicePersona] ?? PERSONA_VOICE["Cinematic"];
+    utter.rate   = vCfg.rate;
+    utter.pitch  = vCfg.pitch;
+    utter.volume = vCfg.volume;
+    utter.lang   = "en-US";
+
+    utter.onstart = () => setVoiceActive(true);
+    utter.onend   = () => setVoiceActive(false);
+    utter.onerror = () => setVoiceActive(false);
+
+    utterRef.current = utter;
+    window.speechSynthesis.speak(utter);
+  }, [generatedScript, config.voicePersona]);
+
+  const stopNarration = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setVoiceActive(false);
+  }, []);
 
   // Auto-load the generated video
   useEffect(() => {
@@ -31,21 +117,47 @@ export default function VideoPreview() {
   }, [generatedVideoUrl]);
 
   // Keep the DOM video element in sync with muted state
+  // Sync video element muted attribute whenever the muted state changes
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = muted;
   }, [muted]);
 
+  /**
+   * Play / Pause
+   * Always starts narration from the very beginning when pressing Play
+   * (video just started from 0, so seekRatio = 0).
+   */
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (playing) {
       videoRef.current.pause();
+      stopNarration();
     } else {
       videoRef.current.play().catch(() => {});
+      if (!muted) startNarration(0);              // fresh start — in sync with video at t=0
     }
     setPlaying((p) => !p);
   };
 
-  const toggleMute = () => setMuted((m) => !m);
+  /**
+   * Mute / Unmute
+   * Controls BOTH the video's baked-in music track AND the voice narration.
+   * - Muting   → stop narration immediately.
+   * - Unmuting → resume narration from the SAME position the video is at.
+   *   We compute seekRatio = currentTime / duration and pass it to
+   *   startNarration so it slices the text to the matching sentence.
+   */
+  const toggleMute = () => {
+    const nextMuted = !muted;
+    setMuted(nextMuted);
+    if (nextMuted) {
+      stopNarration();
+    } else if (playing && videoRef.current) {
+      const { currentTime, duration } = videoRef.current;
+      const ratio = duration > 0 ? currentTime / duration : 0;
+      startNarration(ratio);                     // seek to matching script position
+    }
+  };
 
   const handleRefine = () => {
     resetAgents();
@@ -86,9 +198,49 @@ export default function VideoPreview() {
       {/* Header */}
       <div>
         <h2 className="text-display" style={{ margin: 0, marginBottom: "6px" }}>Preview</h2>
-        <p className="text-body-sm" style={{ color: "var(--color-slate-400)", margin: 0 }}>
-          {scriptData.title ?? config.narrativeTheme} · {config.voicePersona}
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <p className="text-body-sm" style={{ color: "var(--color-slate-400)", margin: 0 }}>
+            {scriptData.title ?? config.narrativeTheme} · {config.voicePersona}
+          </p>
+          {/* Voice-active pill */}
+          {voiceActive && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "2px 10px",
+                background: "rgba(99,102,241,0.15)",
+                border: "1px solid rgba(99,102,241,0.35)",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "var(--color-indigo-400)",
+              }}
+            >
+              {/* Animated waveform dots */}
+              {[0, 0.15, 0.3].map((delay, i) => (
+                <motion.span
+                  key={i}
+                  animate={{ scaleY: [1, 2.5, 1] }}
+                  transition={{ duration: 0.5, repeat: Infinity, delay }}
+                  style={{
+                    display: "inline-block",
+                    width: "3px",
+                    height: "10px",
+                    background: "var(--color-indigo-400)",
+                    borderRadius: "2px",
+                    transformOrigin: "center",
+                  }}
+                />
+              ))}
+              {config.voicePersona} voice
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Success badge */}
