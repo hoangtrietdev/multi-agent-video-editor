@@ -1,399 +1,349 @@
 /**
  * videoGenerator.ts
  * ------------------
- * Generates a video from an array of image URLs using the browser's
- * Canvas API + MediaRecorder API.
+ * Canvas + MediaRecorder with offline-pre-rendered audio.
  *
- * Format support:
- *  - Chrome/Firefox/Android: WebM (VP9 + Opus) — best quality
- *  - iOS Safari (iPhone/iPad): MP4 (H.264) — only supported format
+ * Video duration strategy
+ * -----------------------
+ *   • When voice is ON:  duration = TTS audio duration (fetched first).
+ *     Images cycle/repeat as needed to fill the full TTS duration.
+ *     Video stops exactly when narration ends.
+ *   • When voice is OFF: duration = msPerImage × imageCount (original behaviour).
  *
- * Features:
- *  - Ken Burns (slow pan + zoom) per image
- *  - Cross-fade transitions
- *  - Timed caption overlays (hook → body scenes → cta) burned onto canvas
- *  - Audio track injected from the Web Audio API synth
+ * Audio pipeline:
+ *   1. fetchTTSAudio()     → /api/tts → WAV ArrayBuffer  (server-side macOS `say`)
+ *      decodeAudioData()   → TTS AudioBuffer  ← duration taken from here
+ *   2. renderMusicOffline() → music AudioBuffer  (OfflineAudioContext, no gesture)
+ *   3. mixAudioOffline()   → combined AudioBuffer  (music 35% + voice 92%)
+ *   4. BufferSourceNode → MediaStreamDestination → MediaRecorder
  */
 
+import { renderMusicOffline, fetchTTSAudio, mixAudioOffline } from "./audioSynth";
+
 export interface GenerationProgress {
-  frame: number;
+  /** Current elapsed seconds (0-based). */
+  elapsed: number;
+  /** Total target seconds. */
   total: number;
+  /** Percentage 0–100. */
+  pct: number;
   label: string;
 }
 
-/** A timed caption segment */
 export interface CaptionSegment {
   text: string;
-  /** Which image index this caption appears on (0-based) */
+  /** Index into the image array (wraps for cycling). */
   imageIndex: number;
-  /** Sub-type controls styling */
   type: "hook" | "body" | "cta";
 }
 
-/** Truncate text to at most maxWords words, appending "…" if cut. */
-function truncate(text: string, maxWords: number): string {
-  const words = text.trim().split(/\s+/);
-  if (words.length <= maxWords) return text.trim();
-  return words.slice(0, maxWords).join(" ") + "…";
+export interface AudioConfig {
+  voicePersona: string;
+  narrativeTheme: string;
+  voiceGender: "male" | "female";
+  /** If provided, this text is synthesised via TTS and sets the video duration. */
+  ttsText?: string;
 }
 
-/**
- * Build a caption schedule from the raw Groq script JSON.
- *
- * Rules (prevent overlaps):
- *  - Exactly ONE caption per image frame (enforced via slot Map).
- *  - Hook  → always slot 0.
- *  - CTA   → always last slot (imageCount - 1), but only if it doesn't
- *             collide with the hook (i.e. imageCount >= 2).
- *  - Body  → distributed across "middle" slots (1 … imageCount-2).
- *             Only possible when imageCount >= 3.
- *  - Each body line is truncated to 8 words so captions stay readable.
- */
+/* ------------------------------------------------------------------ */
+/*  Caption helpers                                                     */
+/* ------------------------------------------------------------------ */
+function truncate(text: string, max: number): string {
+  const w = text.trim().split(/\s+/);
+  return w.length <= max ? text.trim() : w.slice(0, max).join(" ") + "…";
+}
+
 export function buildCaptions(scriptJson: string, imageCount: number): CaptionSegment[] {
   if (!scriptJson || imageCount === 0) return [];
-
-  let parsed: Record<string, string> = {};
-  try { parsed = JSON.parse(scriptJson); } catch { return []; }
-
-  // Slot map: imageIndex → one CaptionSegment. Later writes win (overwrite).
+  let p: Record<string, string> = {};
+  try { p = JSON.parse(scriptJson); } catch { return []; }
   const slots = new Map<number, CaptionSegment>();
-
-  /* 1 — Hook on frame 0 */
-  if (parsed.hook) {
-    slots.set(0, {
-      text: truncate(parsed.hook, 10),
-      imageIndex: 0,
-      type: "hook",
-    });
-  }
-
-  /* 2 — CTA on last frame (only if it's a different frame from hook) */
-  const lastFrame = imageCount - 1;
-  if (parsed.cta && lastFrame > 0) {
-    slots.set(lastFrame, {
-      text: truncate(parsed.cta, 8),
-      imageIndex: lastFrame,
-      type: "cta",
-    });
-  }
-
-  /* 3 — Body scenes in middle frames (frames 1 … imageCount-2).
-         Only available when imageCount >= 3. */
-  if (parsed.body && imageCount >= 3) {
-    const scenes = parsed.body
-      .split(/Scene\s*\d*[:.]/i)
+  if (p.hook) slots.set(0, { text: truncate(p.hook, 10), imageIndex: 0, type: "hook" });
+  if (p.cta && imageCount > 1) slots.set(imageCount - 1, { text: truncate(p.cta, 8), imageIndex: imageCount - 1, type: "cta" });
+  if (p.body && imageCount >= 3) {
+    // Split on sentence endings — works with natural narration (no Scene X: labels)
+    const sentences = p.body
+      .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
       .filter(Boolean);
-
-    const middleSlots = imageCount - 2; // frames 1 to imageCount-2
-    const take        = Math.min(scenes.length, middleSlots);
-
+    const take = Math.min(sentences.length, imageCount - 2);
     for (let i = 0; i < take; i++) {
-      const frame = i + 1;                   // 1-indexed middle frame
-      if (!slots.has(frame)) {               // never overwrite hook/cta
-        slots.set(frame, {
-          text: truncate(scenes[i], 8),
-          imageIndex: frame,
-          type: "body",
-        });
-      }
+      const f = i + 1;
+      if (!slots.has(f)) slots.set(f, { text: truncate(sentences[i], 8), imageIndex: f, type: "body" });
     }
   }
-
   return Array.from(slots.values()).sort((a, b) => a.imageIndex - b.imageIndex);
 }
 
-/* ------------------------------------------------------------------ */
-/*  Canvas caption drawing helpers                                      */
-/* ------------------------------------------------------------------ */
 
-/** Wrap text into lines ≤ maxWidth, return array of lines */
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
+/* ------------------------------------------------------------------ */
+/*  Caption drawing                                                     */
+/* ------------------------------------------------------------------ */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const words = text.split(" "); const lines: string[] = []; let line = "";
+  for (const w of words) {
+    const t = line ? `${line} ${w}` : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
   }
   if (line) lines.push(line);
   return lines;
 }
 
-function drawCaption(
-  ctx: CanvasRenderingContext2D,
-  caption: CaptionSegment,
-  canvasWidth: number,
-  canvasHeight: number,
-  alpha: number,           // 0-1 opacity for fade
-) {
+function drawCaption(ctx: CanvasRenderingContext2D, cap: CaptionSegment, W: number, H: number, alpha: number) {
   if (alpha <= 0) return;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-
-  const isHook = caption.type === "hook";
-  const isCta  = caption.type === "cta";
-
-  const maxW   = canvasWidth * 0.82;
-  const fontSize = isHook ? 72 : isCta ? 68 : 60;
-  const fontWeight = isHook || isCta ? 800 : 700;
-
-  ctx.font = `${fontWeight} ${fontSize}px 'Arial', sans-serif`;
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "bottom";
-
-  const lines = wrapText(ctx, caption.text, maxW);
-  const lineH  = fontSize * 1.22;
-  const totalH = lines.length * lineH;
-
-  // Vertical position
-  const baseY = isHook
-    ? canvasHeight * 0.22
-    : isCta
-    ? canvasHeight * 0.88
-    : canvasHeight * 0.82;
-
-  const startY = isHook ? baseY : baseY - totalH + lineH;
-
-  lines.forEach((line, li) => {
-    const y = startY + li * lineH;
-    const x = canvasWidth / 2;
-
-    // Semi-transparent pill background for readability
-    const metrics   = ctx.measureText(line);
-    const padX      = 32;
-    const padY      = 16;
-    const rectW     = metrics.width + padX * 2;
-    const rectH     = lineH + padY;
-    const rectX     = x - rectW / 2;
-    const rectY     = y - fontSize - padY / 2;
-    const radius    = 20;
-
+  ctx.save(); ctx.globalAlpha = alpha;
+  const isHook = cap.type === "hook", isCta = cap.type === "cta";
+  const fs = isHook ? 72 : isCta ? 68 : 60;
+  ctx.font = `${isHook || isCta ? 800 : 700} ${fs}px Arial,sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  const lines = wrapText(ctx, cap.text, W * 0.82);
+  const lineH = fs * 1.22;
+  const baseY = isHook ? H * 0.22 : isCta ? H * 0.88 : H * 0.82;
+  const startY = isHook ? baseY : baseY - lines.length * lineH + lineH;
+  lines.forEach((ln, i) => {
+    const y = startY + i * lineH, x = W / 2;
+    const m = ctx.measureText(ln);
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.beginPath();
-    ctx.roundRect(rectX, rectY, rectW, rectH, radius);
-    ctx.fill();
-
-    // White text
-    ctx.fillStyle   = "#FFFFFF";
-    ctx.shadowColor = "rgba(0,0,0,0.9)";
-    ctx.shadowBlur  = 18;
-    ctx.shadowOffsetY = 3;
-    ctx.fillText(line, x, y);
-    ctx.shadowBlur  = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Coloured accent underline for hook
-    if (isHook) {
-      ctx.fillStyle = "rgba(99,102,241,0.85)";
-      ctx.fillRect(x - metrics.width / 2, y + 4, metrics.width, 4);
-    }
-    if (isCta) {
-      ctx.fillStyle = "rgba(34,211,238,0.85)";
-      ctx.fillRect(x - metrics.width / 2, y + 4, metrics.width, 4);
-    }
+    ctx.beginPath(); ctx.roundRect(x - m.width / 2 - 32, y - fs - 8, m.width + 64, lineH + 16, 20); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3;
+    ctx.fillText(ln, x, y); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    if (isHook) { ctx.fillStyle = "rgba(99,102,241,0.85)"; ctx.fillRect(x - m.width / 2, y + 4, m.width, 4); }
+    if (isCta)  { ctx.fillStyle = "rgba(34,211,238,0.85)"; ctx.fillRect(x - m.width / 2, y + 4, m.width, 4); }
   });
-
   ctx.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/*  MIME                                                                */
+/* ------------------------------------------------------------------ */
+function chooseMime(): string {
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (iOS) return MediaRecorder.isTypeSupported("video/mp4;codecs=avc1") ? "video/mp4;codecs=avc1" : "video/mp4";
+  if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) return "video/webm;codecs=vp9,opus";
+  if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) return "video/webm;codecs=vp8,opus";
+  if (MediaRecorder.isTypeSupported("video/webm"))                 return "video/webm";
+  return "video/mp4";
 }
 
 /* ------------------------------------------------------------------ */
 /*  Main export                                                         */
 /* ------------------------------------------------------------------ */
-
 export async function generateVideoFromImages(
   urls: string[],
   onProgress?: (p: GenerationProgress) => void,
-  /** milliseconds each image is shown (default 2.5 s) */
   msPerImage = 2500,
-  /** 9:16 portrait resolution */
   width  = 1080,
   height = 1920,
-  /** Optional captions to burn onto frames */
   captions: CaptionSegment[] = [],
-  /** Optional audio track from Web Audio API synth */
-  audioTrack?: MediaStreamTrack,
+  audioConfig?: AudioConfig,
 ): Promise<string> {
   if (urls.length === 0) throw new Error("No images provided");
 
-  return new Promise((resolve, reject) => {
-    /* ── Canvas setup ── */
-    const canvas = document.createElement("canvas");
-    canvas.width  = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: false });
-    if (!ctx) { reject(new Error("Canvas 2D context unavailable")); return; }
+  /* ── 1. Pre-load images ── */
+  const images = (await Promise.all(
+    urls.map((url) => new Promise<HTMLImageElement | null>((res) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => res(img); img.onerror = () => res(null); img.src = url;
+    }))
+  )).filter(Boolean) as HTMLImageElement[];
+  if (images.length === 0) throw new Error("No images could be loaded");
 
-    /* ── MediaRecorder setup ── */
-    const videoStream = canvas.captureStream(30);
+  /* ── 2. Audio pipeline ──
+   *
+   * Step A: Fetch TTS FIRST → decode → read actual audio duration.
+   *         Video duration is set to TTS duration (voice-driven length).
+   * Step B: Render music for that exact duration (OfflineAudioContext).
+   * Step C: Mix both offline.
+   * Step D: Play mixed buffer via BufferSourceNode during recording.
+   */
+  let finalAudioBuf: AudioBuffer | null = null;
+  let liveCtx: AudioContext | null      = null;
+  let audioTrack: MediaStreamTrack | null = null;
 
-    // Inject audio track if available
-    if (audioTrack) {
-      videoStream.addTrack(audioTrack);
-    }
+  // Default duration: fixed per-image timing (used when no TTS)
+  let totalSec = (msPerImage * images.length) / 1000 + 1.0;
+  let ttsBuf: AudioBuffer | null = null;
 
-    /*
-     * MIME type selection:
-     *  - iOS Safari does NOT support WebM at all (neither recording nor playback).
-     *  - iOS MediaRecorder only supports video/mp4 with H.264 (avc1).
-     *  - We detect iOS via the User Agent and force MP4 there.
-     *  - On all other browsers we prefer WebM VP9+Opus for quality.
-     */
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-    const mimeType = isIOS
-      ? (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1")
-          ? "video/mp4;codecs=avc1"
-          : "video/mp4")
-      : MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-        ? "video/webm;codecs=vp9,opus"
-        : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-        ? "video/webm;codecs=vp8,opus"
-        : MediaRecorder.isTypeSupported("video/webm")
-        ? "video/webm"
-        : "video/mp4";
-
-    let recorder: MediaRecorder;
+  if (audioConfig) {
     try {
-      recorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: 4_000_000 });
-    } catch {
-      recorder = new MediaRecorder(videoStream);
-    }
+      /* A. Fetch & decode TTS — duration comes from this buffer */
+      if (audioConfig.ttsText) {
+        onProgress?.({ elapsed: 0, total: totalSec, pct: 2, label: "🎙 Fetching persona voice…" });
+        const ttsRaw = await fetchTTSAudio(
+          audioConfig.ttsText,
+          audioConfig.voicePersona,
+          audioConfig.voiceGender,
+        );
+        if (ttsRaw) {
+          const decodeCtx = new AudioContext();
+          try   { ttsBuf = await decodeCtx.decodeAudioData(ttsRaw); }
+          finally { await decodeCtx.close(); }
 
+          // ← video duration is driven by TTS length
+          totalSec = ttsBuf.duration + 0.6; // small tail-out
+        }
+      }
+
+      /* B. Render music bed for exactly totalSec */
+      onProgress?.({ elapsed: 0, total: totalSec, pct: 5, label: "🎵 Rendering music bed…" });
+      const musicBuf = await renderMusicOffline(
+        audioConfig.voicePersona,
+        audioConfig.narrativeTheme,
+        totalSec,
+      );
+
+      /* C. Mix music + TTS */
+      onProgress?.({ elapsed: 0, total: totalSec, pct: 10, label: ttsBuf ? "🎚 Mixing music + voice…" : "🎚 Finalising audio…" });
+      finalAudioBuf = await mixAudioOffline(musicBuf, ttsBuf, totalSec);
+
+      /* D. Live playback context for MediaRecorder capture */
+      liveCtx = new AudioContext({ sampleRate: 44100 });
+      try { await liveCtx.resume(); } catch { /* ok on iOS */ }
+      const dest   = liveCtx.createMediaStreamDestination();
+      const source = liveCtx.createBufferSource();
+      source.buffer = finalAudioBuf;
+      source.connect(dest);
+      source.start(0);
+      audioTrack = dest.stream.getAudioTracks()[0] ?? null;
+
+    } catch (e) {
+      console.warn("[videoGenerator] Audio pipeline failed — video will be silent:", e);
+      liveCtx?.close().catch(() => {});
+      liveCtx = null; audioTrack = null;
+    }
+  }
+
+  /* ── 3. Canvas + combined MediaStream ── */
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: false });
+  if (!ctx) { liveCtx?.close().catch(() => {}); throw new Error("Canvas unavailable"); }
+
+  const canvasStream = canvas.captureStream(30);
+  const combined     = audioTrack
+    ? new MediaStream([...canvasStream.getVideoTracks(), audioTrack])
+    : canvasStream;
+
+  /* ── 4. MediaRecorder ── */
+  const mime = chooseMime();
+  let recorder: MediaRecorder;
+  try { recorder = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 }); }
+  catch  { recorder = new MediaRecorder(combined); }
+
+  /* ── 5. Frame render loop ──
+   *
+   * Images cycle (idx % images.length) until totalSec is reached.
+   * Progress is time-based: elapsed / totalSec.
+   * The loop ends when elapsed >= totalSec (not when images are exhausted).
+   */
+  const totalMs   = totalSec * 1000;
+  const FADE      = 400; // cross-fade window in ms
+
+  return new Promise<string>((resolve, reject) => {
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
-      resolve(URL.createObjectURL(blob));
+      liveCtx?.close().catch(() => {});
+      resolve(URL.createObjectURL(new Blob(chunks, { type: mime.split(";")[0] })));
     };
-    recorder.onerror = (e) => reject(e);
+    recorder.onerror = (e) => { liveCtx?.close().catch(() => {}); reject(e); };
 
-    /* ── Pre-load images ── */
-    Promise.all(
-      urls.map(
-        (url) =>
-          new Promise<HTMLImageElement | null>((res) => {
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.onload  = () => res(img);
-            img.onerror = () => res(null);
-            img.src = url;
-          })
-      )
-    ).then((rawImages) => {
-      const images = rawImages.filter(Boolean) as HTMLImageElement[];
-      if (images.length === 0) { reject(new Error("No images loaded")); return; }
+    recorder.start(50);
 
-      const totalFrames = images.length;
-      recorder.start(100);
+    // Image-slot state (independent of total time)
+    let imgStep  = 0;          // which image slot we're on (unbounded counter)
+    let imgStart = performance.now(); // when current image slot started
+    let renderStart = performance.now(); // when recording started
+    let raf = 0;
+    let stopping = false;
 
-      let imgIdx  = 0;
-      let startMs = performance.now();
-      let rafId   = 0;
+    const draw = (now: number) => {
+      const totalElapsed = now - renderStart; // ms since record start
 
-      const FADE_MS = 450;
-
-      /* ── Per-frame draw ── */
-      const drawFrame = (now: number) => {
-        const elapsed  = now - startMs;
-        const progress = Math.min(elapsed / msPerImage, 1);
-
-        if (imgIdx >= images.length) {
-          recorder.stop();
-          cancelAnimationFrame(rafId);
-          return;
-        }
-
-        onProgress?.({
-          frame: imgIdx + 1,
-          total: totalFrames,
-          label: `Compositing frame ${imgIdx + 1} of ${totalFrames}…`,
-        });
-
-        const img = images[imgIdx];
-
-        /* ── Cover-fit with Ken Burns zoom ── */
-        const zoom = 1 + progress * 0.06;
-        const imgR = img.naturalWidth / img.naturalHeight;
-        const canR = width / height;
-        let dw: number, dh: number, dx: number, dy: number;
-
-        if (imgR > canR) {
-          dh = height * zoom;
-          dw = dh * imgR;
-        } else {
-          dw = width * zoom;
-          dh = dw / imgR;
-        }
-        dx = (width  - dw) / 2;
-        dy = (height - dh) / 2;
-
-        /* Slow pan alternates per image */
-        const panAmt = height * 0.03 * progress;
-        if (imgIdx % 2 === 0) { dy -= panAmt; } else { dy += panAmt; }
-
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = "#020617";
+      /* ── Stop condition: audio is done ── */
+      if (totalElapsed >= totalMs && !stopping) {
+        stopping = true;
+        cancelAnimationFrame(raf);
+        // Fade to black on the last frame
+        ctx.fillStyle = "rgba(2,6,23,1)";
         ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, dx, dy, dw, dh);
+        try { recorder.requestData(); } catch { /* ok */ }
+        setTimeout(() => { try { recorder.stop(); } catch { /* ok */ } }, 300);
+        return;
+      }
 
-        /* ── Cinematic letterbox gradient ── */
-        const topGrad = ctx.createLinearGradient(0, 0, 0, height * 0.3);
-        topGrad.addColorStop(0, "rgba(2,6,23,0.75)");
-        topGrad.addColorStop(1, "rgba(2,6,23,0)");
-        ctx.fillStyle = topGrad;
-        ctx.fillRect(0, 0, width, height * 0.3);
+      /* ── Report progress ── */
+      const elapsedSec = totalElapsed / 1000;
+      const pct = Math.min(99, Math.round(10 + (totalElapsed / totalMs) * 89));
+      onProgress?.({
+        elapsed: elapsedSec,
+        total: totalSec,
+        pct,
+        label: `Rendering… ${elapsedSec.toFixed(1)}s / ${totalSec.toFixed(1)}s`,
+      });
 
-        const botGrad = ctx.createLinearGradient(0, height * 0.6, 0, height);
-        botGrad.addColorStop(0, "rgba(2,6,23,0)");
-        botGrad.addColorStop(1, "rgba(2,6,23,0.9)");
-        ctx.fillStyle = botGrad;
-        ctx.fillRect(0, height * 0.6, width, height * 0.4);
+      /* ── Which image to show (cycling) ── */
+      const imgElapsed = now - imgStart;
+      const progress   = Math.min(imgElapsed / msPerImage, 1);
+      const actualIdx  = imgStep % images.length;
+      const img        = images[actualIdx];
 
-        /* ── Frame fade-in / fade-out ── */
-        const fadeIn  = Math.min(1, elapsed / FADE_MS);
-        const fadeOut = elapsed > msPerImage - FADE_MS
-          ? Math.max(0, (msPerImage - elapsed) / FADE_MS)
-          : 1;
-        const blackAlpha = 1 - fadeIn * fadeOut;
-        if (blackAlpha > 0) {
-          ctx.fillStyle = `rgba(2,6,23,${blackAlpha.toFixed(3)})`;
-          ctx.fillRect(0, 0, width, height);
-        }
+      /* Ken Burns pan */
+      const zoom = 1 + progress * 0.06;
+      const imgR = img.naturalWidth / img.naturalHeight;
+      const canR = width / height;
+      let dw: number, dh: number, dx: number, dy: number;
+      if (imgR > canR) { dh = height * zoom; dw = dh * imgR; }
+      else             { dw = width  * zoom; dh = dw / imgR; }
+      dx = (width - dw) / 2; dy = (height - dh) / 2;
+      if (imgStep % 2 === 0) dy -= height * 0.03 * progress;
+      else                   dy += height * 0.03 * progress;
 
-        /* ── Indigo vignette ── */
-        const vigGrad = ctx.createRadialGradient(
-          width / 2, height / 2, height * 0.3,
-          width / 2, height / 2, height * 0.75
-        );
-        vigGrad.addColorStop(0, "rgba(99,102,241,0)");
-        vigGrad.addColorStop(1, "rgba(99,102,241,0.12)");
-        ctx.fillStyle = vigGrad;
-        ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#020617"; ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, dx, dy, dw, dh);
 
-        /* ── Captions ── */
-        const captionAlpha = Math.min(fadeIn, fadeOut) * 0.95; // fade with frame
-        const frameCaptions = captions.filter((c) => c.imageIndex === imgIdx);
-        for (const cap of frameCaptions) {
-          drawCaption(ctx, cap, width, height, captionAlpha);
-        }
+      /* Gradients */
+      const tg = ctx.createLinearGradient(0, 0, 0, height * 0.3);
+      tg.addColorStop(0, "rgba(2,6,23,0.75)"); tg.addColorStop(1, "rgba(2,6,23,0)");
+      ctx.fillStyle = tg; ctx.fillRect(0, 0, width, height * 0.3);
+      const bg = ctx.createLinearGradient(0, height * 0.6, 0, height);
+      bg.addColorStop(0, "rgba(2,6,23,0)"); bg.addColorStop(1, "rgba(2,6,23,0.9)");
+      ctx.fillStyle = bg; ctx.fillRect(0, height * 0.6, width, height * 0.4);
 
-        if (progress >= 1) {
-          imgIdx++;
-          startMs = now;
-        }
+      /* Cross-fade at image transitions */
+      const fi = Math.min(1, imgElapsed / FADE);
+      const fo = imgElapsed > msPerImage - FADE ? Math.max(0, (msPerImage - imgElapsed) / FADE) : 1;
+      const ba = 1 - fi * fo;
+      if (ba > 0) { ctx.fillStyle = `rgba(2,6,23,${ba.toFixed(3)})`; ctx.fillRect(0, 0, width, height); }
 
-        rafId = requestAnimationFrame(drawFrame);
-      };
+      /* Final 1s global fade-out */
+      const remainMs = totalMs - totalElapsed;
+      if (remainMs < 1000) {
+        const fadeAlpha = 1 - remainMs / 1000;
+        ctx.fillStyle = `rgba(2,6,23,${fadeAlpha.toFixed(3)})`; ctx.fillRect(0, 0, width, height);
+      }
 
-      rafId = requestAnimationFrame(drawFrame);
-    }).catch(reject);
+      /* Vignette */
+      const vg = ctx.createRadialGradient(width/2, height/2, height*0.3, width/2, height/2, height*0.75);
+      vg.addColorStop(0, "rgba(99,102,241,0)"); vg.addColorStop(1, "rgba(99,102,241,0.12)");
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, width, height);
+
+      /* Captions — tied to cycling image slot */
+      const captionAlpha = Math.min(fi, fo) * 0.95;
+      for (const cap of captions.filter((c) => c.imageIndex === actualIdx)) {
+        drawCaption(ctx, cap, width, height, captionAlpha);
+      }
+
+      /* Advance image slot */
+      if (progress >= 1) { imgStep++; imgStart = now; }
+
+      raf = requestAnimationFrame(draw);
+    };
+
+    renderStart = performance.now();
+    imgStart    = renderStart;
+    raf = requestAnimationFrame(draw);
   });
 }

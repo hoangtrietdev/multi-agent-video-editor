@@ -2,8 +2,7 @@
 import { useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOrchestrationStore, AgentState, AgentStatus } from "@/store/orchestrationStore";
-import { generateVideoFromImages, buildCaptions } from "@/lib/videoGenerator";
-import { startAudioSynth } from "@/lib/audioSynth";
+import { generateVideoFromImages, buildCaptions, AudioConfig } from "@/lib/videoGenerator";
 
 /* ------------------------------------------------------------------ */
 /*  Status colours / labels                                             */
@@ -189,8 +188,10 @@ export default function OrchestrationFlow() {
           body: JSON.stringify({
             narrativeTheme: config.narrativeTheme,
             voicePersona: config.voicePersona,
+            voiceGender: config.voiceGender,
             primaryVision: config.primaryVision,
             mediaCount: selectedCount,
+            videoMode: config.videoMode,
           }),
         });
         const data = await resp.json();
@@ -199,74 +200,91 @@ export default function OrchestrationFlow() {
         setAgentStatus("scripting", "done", "Script generated ✓", data.script);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "LLM unavailable";
-        const mockScript = JSON.stringify({
-          title: `${config.narrativeTheme} Masterpiece`,
-          hook: "In a world where every frame tells a story…",
-          body: "Scene 1: Establishing wide shot. Scene 2: Intimate close-up. Scene 3: Dynamic motion.",
-          cta: "Follow for more.",
-          voiceNotes: `${config.voicePersona} tone, 1.0× speed.`,
-        }, null, 2);
+        const isMemory = config.videoMode === "memory";
+        const mockScript = isMemory
+          ? JSON.stringify({
+              title: `A Moment Worth Keeping`,
+              hook: "Every photo holds a piece of your heart…",
+              body: "These moments, quiet and precious — laughter shared, hands held, eyes that see only you. Time may pass, but these memories never fade.",
+              cta: "With all my love. Always.",
+              voiceNotes: "Soft, warm, gentle pace. Pause lovingly between lines.",
+            }, null, 2)
+          : JSON.stringify({
+              title: `${config.narrativeTheme} Masterpiece`,
+              hook: "In a world where every frame tells a story…",
+              body: "Scene 1: Establishing wide shot. Scene 2: Intimate close-up. Scene 3: Dynamic motion.",
+              cta: "Follow for more.",
+              voiceNotes: `${config.voicePersona} tone, 1.0× speed.`,
+            }, null, 2);
         setGeneratedScript(mockScript);
         setAgentStatus("scripting", "done", `⚠️ ${msg} — using mock`, mockScript);
       }
 
-      /* ── Audio Agent — mood-matched generative synth ── */
-      setAgentStatus("audio", "running", `Synthesising ${config.voicePersona} music bed…`);
-      // Start synthesis immediately so it warms up during render
-      let audioHandle: ReturnType<typeof startAudioSynth> | null = null;
-      try {
-        audioHandle = startAudioSynth(config.voicePersona, config.narrativeTheme);
-        setAgentStatus("audio", "done",
-          `🎵 ${config.voicePersona} · ${config.narrativeTheme} music bed ready ✓`);
-      } catch {
-        setAgentStatus("audio", "done", "⚠️ Audio synth unavailable — silent mode");
-      }
+      /* ── Audio Agent ── */
+      setAgentStatus("audio", "running", `Preparing ${config.voicePersona} persona audio…`);
+      // No pre-warming needed — TTS is handled server-side via /api/tts
+      await new Promise((r) => setTimeout(r, 400)); // brief UX pause
+      setAgentStatus("audio", "done",
+        `🎵 ${config.voicePersona} · ${config.narrativeTheme} · ${config.includeVoice ? `🎙 ${config.voiceGender} voice ON` : "music only"} ✓`);
 
-      /* ── Render Agent — real canvas video generation ── */
-      setAgentStatus("render", "running", "Compositing frames with captions…");
+      /* ── Render Agent ── */
+      setAgentStatus("render", "running", "Compositing frames…");
       setRenderProgress(0);
 
-      const imageUrls = selectedItems
-        .filter((m) => m.type === "photo")
-        .map((m) => m.url);
+      const imageUrls = selectedItems.filter((m) => m.type === "photo").map((m) => m.url);
 
-      // If only videos were uploaded, skip canvas generation and use first video
       if (imageUrls.length === 0) {
         await sleep(1500);
         const firstVideo = selectedItems.find((m) => m.type === "video");
         if (firstVideo) setGeneratedVideoUrl(firstVideo.url);
-        audioHandle?.stop();
         setAgentStatus("render", "done", "Video track composited ✓");
       } else {
-        // Parse captions from the generated script
         const captions = buildCaptions(
           useOrchestrationStore.getState().generatedScript,
-          imageUrls.length
+          imageUrls.length,
         );
         try {
           const msPerImage = Math.min(3000, Math.max(1500, 8000 / imageUrls.length));
+
+          /* Build TTS text from the generated script (if voice is enabled) */
+          let ttsText: string | undefined;
+          if (config.includeVoice) {
+            const raw = useOrchestrationStore.getState().generatedScript;
+            try {
+              const sd: Record<string, string> = JSON.parse(raw);
+              ttsText = [sd.hook, sd.body, sd.cta].filter(Boolean).join(". ");
+            } catch {
+              ttsText = raw.slice(0, 500);
+            }
+          }
+
+          const audioConfig: AudioConfig = {
+            voicePersona:   config.voicePersona,
+            narrativeTheme: config.narrativeTheme,
+            voiceGender:    config.voiceGender,
+            ttsText,   // undefined when voice is OFF
+          };
+
           const videoUrl = await generateVideoFromImages(
             imageUrls,
             (progress) => {
-              const pct = Math.round((progress.frame / progress.total) * 100);
-              setRenderProgress(pct);
+              setRenderProgress(progress.pct);
               setAgentStatus("render", "running", progress.label);
             },
             msPerImage,
             1080,
             1920,
             captions,
-            audioHandle?.track,
+            audioConfig,
           );
-          audioHandle?.stop();
+
           setGeneratedVideoUrl(videoUrl);
           setRenderProgress(100);
           setAgentStatus(
             "render", "done",
-            `${imageUrls.length}-frame video · ${captions.length} captions · 🎵 audio ✓`
+            `🎬 ${imageUrls.length} images · ${captions.length} captions · 🎵${config.includeVoice ? " + 🎙 persona voice" : ""} baked ✓`,
           );
         } catch (renderErr: unknown) {
-          audioHandle?.stop();
           const msg = renderErr instanceof Error ? renderErr.message : "Render failed";
           setGeneratedVideoUrl(imageUrls[0]);
           setAgentStatus("render", "done", `⚠️ ${msg} — static preview used`);
@@ -290,7 +308,7 @@ export default function OrchestrationFlow() {
   const allDone   = doneCount === agents.length;
 
   return (
-    <section style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "24px" }}>
+    <section style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "14px" }}>
       <div>
         <h2 className="text-display" style={{ margin: 0, marginBottom: "6px" }}>Agent Flow</h2>
         <p className="text-body-sm" style={{ color: "var(--color-slate-400)", margin: 0 }}>

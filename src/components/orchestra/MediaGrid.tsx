@@ -191,8 +191,8 @@ function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
       onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
       style={{
         border: `2px dashed ${dragging ? "var(--color-indigo)" : "var(--color-slate-700)"}`,
-        borderRadius: "16px",
-        padding: "32px 20px",
+        borderRadius: "14px",
+        padding: "20px 16px",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -316,14 +316,14 @@ export default function MediaGrid() {
   const sizeColor  = sizePct > 90 ? "#EF4444" : sizePct > 70 ? "#F59E0B" : "var(--color-cyan)";
 
   return (
-    <section style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <section style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Header */}
       <div>
-        <h2 className="text-display" style={{ margin: 0, marginBottom: "6px" }}>
+        <h2 className="text-display" style={{ margin: 0, marginBottom: "2px" }}>
           Select Media
         </h2>
         <p className="text-body-sm" style={{ color: "var(--color-slate-400)", margin: 0 }}>
-          Upload your photos &amp; videos — the AI will generate a video from them
+          Upload photos &amp; videos to generate your AI video
         </p>
       </div>
 

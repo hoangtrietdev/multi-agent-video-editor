@@ -6,6 +6,10 @@ import { create } from "zustand";
 export type AgentId = "vision" | "scripting" | "audio" | "render";
 export type AgentStatus = "idle" | "running" | "done" | "error";
 
+/** "cinematic" = original mode; "memory" = personal/memorial mode */
+export type VideoMode = "cinematic" | "memory";
+export type VoiceGender = "male" | "female";
+
 export interface AgentState {
   id: AgentId;
   label: string;
@@ -32,7 +36,11 @@ export type FlowStep = "select" | "configure" | "orchestrate" | "preview";
 export interface OrchestrationConfig {
   narrativeTheme: string;
   voicePersona: string;
+  voiceGender: VoiceGender;
   primaryVision: string;
+  videoMode: VideoMode;
+  /** Whether to play TTS narration in the preview player (cannot be baked into video) */
+  includeVoice: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,7 +140,14 @@ export const useOrchestrationStore = create<OrchestrationStore>((set) => ({
   selectedCount: 0,
 
   /* Config */
-  config: { narrativeTheme: "Travel", voicePersona: "Cinematic", primaryVision: "" },
+  config: {
+    narrativeTheme: "Travel",
+    voicePersona: "Cinematic",
+    voiceGender: "female",
+    primaryVision: "",
+    videoMode: "cinematic",
+    includeVoice: true,
+  },
   setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
 
   /* Agents */
