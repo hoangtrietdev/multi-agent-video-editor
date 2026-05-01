@@ -152,13 +152,39 @@ Lifetime PRC (after 10 sessions) = 30%  (target)
 
 ---
 
-## 6. Research Paper Structure
+## 6. Competitor Analysis & Market Comparison
+
+To position Orchestra AI effectively in the market (and for the research paper), we must compare it against existing paradigms across three key axes: **Time to Generation**, **Content Quality**, and **AI Utilization**.
+
+### 6.1 Feature & Performance Matrix
+
+| Product / Platform | Primary Focus | Time to Generate | Content Quality & Narrative | AI Utilization Focus | Performance (Client vs Cloud) |
+|---|---|---|---|---|---|
+| **Google Photos / Apple Memories** | Passive Archive | Instant (Pre-computed) | Low (Algorithmic slideshows, no custom narration, generic music) | Face recognition, simple clustering | 100% On-device / Background |
+| **CapCut AI / TikTok AutoCut** | Active Editing | 1–3 mins (High friction) | Medium/High (Trendy transitions, but lacks deep emotional storytelling) | Beat-syncing, auto-captions | Hybrid (Heavy client-side editing + Cloud assets) |
+| **Runway Gen-2 / Sora / Pika** | Generative AI | 2–5+ mins | High (Generates pixels from scratch, hallucinates, no personal connection) | Heavy Diffusion Models (Text-to-Video) | 100% Cloud (Extremely expensive & slow) |
+| **Orchestra AI (Current MVP)** | **Photo Re-activation** | **< 15 seconds** | **High** (Dynamic Ken Burns, personalized Groq LPU script, macOS TTS) | **Narrative Intelligence** (Fast LLM Scripting + TTS) | **Hybrid** (Cloud LLM + 100% Client-side video render) |
+| **Orchestra AI (Final V2)** | **Photo Re-activation** | **< 10 seconds** | **Studio Grade** (ElevenLabs/Bark TTS, MediaPipe vision-driven pacing) | **Multi-Agent Orchestration** (Vision + Script + Audio in parallel) | **Optimized Hybrid** (WebAssembly/WebGPU Render + Cloud Agents) |
+
+### 6.2 Orchestra AI: MVP vs. Final (V2) Evolution
+
+| Metric | Current MVP | Final V2 Target |
+|---|---|---|
+| **Audio Quality** | Standard macOS local TTS (`say`), basic tone | ElevenLabs / PlayHT cloud TTS with deep emotional prosody |
+| **Visual Analysis** | Simple metadata / EXIF | MediaPipe/Gemini Nano on-device visual analysis (facial expressions) |
+| **Render Speed** | Sequential (Script → Audio → Render): ~15s | Parallel Orchestration (Audio generating while rendering): < 10s |
+| **Visual Effects** | Standard cross-fade + Ken Burns | Beat-synced transitions driven by audio waveform analysis |
+| **Scalability** | Relies on local Mac environment for TTS | Fully dockerized/cloud-ready audio pipeline |
+
+---
+
+## 7. Research Paper Structure
 
 ### Proposed Title
 **"Orchestra AI: A Multi-Agent Pipeline for Personalized Video Generation from Personal Photo Archives"**
 
 ### Abstract Points
-- Problem: 95% of smartphone photos are never reshared
+- Problem: The "Digital Hoarding" phenomenon. Research indicates the average user stores ~2,795 photos, yet 75% to 80% of these photos are never viewed again, and over 50% of users do nothing with the media they capture.
 - Solution: End-to-end AI pipeline generating narrative videos in < 15s
 - Architecture: On-device metadata analysis → LPU-accelerated script generation → offline audio synthesis → canvas rendering
 - Results: PRC of X%, generation latency of Ys, user satisfaction of Z/5
@@ -167,7 +193,12 @@ Lifetime PRC (after 10 sessions) = 30%  (target)
 
 ```
 1. Introduction
-   - The "dead photo" problem
+   - The "dead photo" problem and "Digital Hoarding":
+     * The average smartphone user stores around 2,795 photos in their camera roll [1].
+     * Studies show 75% to 80% of photos taken on mobile phones are never looked at again after capture [2, 3].
+     * 54% of users report feeling overwhelmed by the sheer volume of their photos, resulting in 50% of people doing absolutely nothing with the media they capture [2].
+     * Selfies are particularly ignored, with up to 87% never re-examined [4].
+     * References: [1] Affenstunde 2023; [2] Mixbook Survey 2022; [3] Reddit discussions/User Surveys; [4] Iceni Magazine.
    - Why existing tools fail (too slow, too complex, too generic)
    - Orchestra AI's 3 design principles:
      a. Speed-first (< 15s end-to-end)
@@ -207,7 +238,7 @@ Lifetime PRC (after 10 sessions) = 30%  (target)
 
 ---
 
-## 7. V2 Roadmap (Priority Order)
+## 8. V2 Roadmap (Priority Order)
 
 | Priority | Feature | Impact | Effort |
 |---|---|---|---|
@@ -220,7 +251,7 @@ Lifetime PRC (after 10 sessions) = 30%  (target)
 
 ---
 
-## 8. Quick Win: Upgrade the Prompt Right Now
+## 9. Quick Win: Upgrade the Prompt Right Now
 
 The single highest-ROI change for MVP quality is improving the Groq system prompt in `/api/orchestrate.ts`. No model change needed — same speed, 3× better output.
 
