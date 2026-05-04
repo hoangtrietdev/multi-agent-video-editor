@@ -81,8 +81,8 @@ export default function VideoPreview() {
     if (!generatedVideoUrl) return;
     setSaving(true);
     try {
-      const ext  = IS_IOS ? "mp4" : "webm";
-      const mime = IS_IOS ? "video/mp4" : "video/webm";
+      const ext  = "mp4";
+      const mime = "video/mp4";
       const name = `${isMemory ? "memory" : "video"}-${Date.now()}.${ext}`;
       await saveToGallery(generatedVideoUrl, name, mime, (url, n) => {
         const a = document.createElement("a");
@@ -134,7 +134,7 @@ export default function VideoPreview() {
             fontSize: "11px", fontWeight: 600,
             color: "var(--color-cyan)", flexShrink: 0,
           }}>
-            ✅ {IS_IOS ? "MP4" : "WebM"}
+            ✅ MP4
           </div>
         )}
       </div>
@@ -160,7 +160,7 @@ export default function VideoPreview() {
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
           >
-            <source src={generatedVideoUrl} type={IS_IOS ? "video/mp4" : "video/webm"} />
+            <source src={generatedVideoUrl} type="video/mp4" />
             <source src={generatedVideoUrl} />
           </video>
         ) : (
