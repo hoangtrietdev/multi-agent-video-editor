@@ -234,7 +234,7 @@ function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
           <span style={{ color: "var(--color-indigo-400)", fontWeight: 600 }}>browse</span>
         </p>
         <p style={{ margin: "8px 0 0", color: "var(--color-slate-600)", fontSize: "11px", letterSpacing: "0.03em" }}>
-          JPG · PNG · WEBP · MP4 · MOV &nbsp;·&nbsp; <strong style={{ color: "var(--color-slate-500)" }}>Max 5 MB total</strong>
+          JPG · PNG · WEBP · MP4 · MOV &nbsp;·&nbsp; <strong style={{ color: "var(--color-slate-500)" }}>Max 30 MB total</strong>
         </p>
       </div>
 
@@ -301,7 +301,7 @@ export default function MediaGrid() {
         approved.push(f);
         running += f.size;
       } else {
-        setSizeError(`⚠️ 5 MB total limit reached — ${withinPerFile.length - approved.length} file(s) skipped. Remove some files to add more.`);
+        setSizeError(`⚠️ 30 MB total limit reached — ${withinPerFile.length - approved.length} file(s) skipped. Remove some files to add more.`);
         break;
       }
     }
@@ -370,7 +370,7 @@ export default function MediaGrid() {
                 {mediaItems.length} file{mediaItems.length > 1 ? "s" : ""}
               </span>
               <span className="text-mono" style={{ color: sizeColor, fontWeight: 600 }}>
-                {sizeLabel(totalSize)} / 5 MB
+                {sizeLabel(totalSize)} / 30 MB
               </span>
             </div>
             <button
@@ -409,7 +409,7 @@ export default function MediaGrid() {
         >
           <div className="animate-spin-slow" style={{ fontSize: "16px" }}>⚙️</div>
           <p className="text-body-sm" style={{ margin: 0, color: "var(--color-indigo-400)" }}>
-            Compressing images to fit under 5 MB…
+            Compressing images to fit under 30 MB…
           </p>
         </motion.div>
       )}

@@ -171,12 +171,19 @@ export default function OrchestrationFlow() {
     try {
       /* ── Vision Agent ── */
       setAgentStatus("vision", "running", `Analyzing ${selectedCount} uploaded file${selectedCount > 1 ? "s" : ""}…`);
-      await sleep(1500);
-      const photoCount = selectedItems.filter((m) => m.type === "photo").length;
-      const videoCount = selectedItems.filter((m) => m.type === "video").length;
+      
+      const { processMediaOnDevice } = await import("@/lib/visionAgent");
+      const curatedItems = await processMediaOnDevice(selectedItems, (msg) => {
+        setAgentStatus("vision", "running", msg);
+      }, 30);
+
+      const photoCount = curatedItems.filter((m) => m.type === "photo").length;
+      const videoCount = curatedItems.filter((m) => m.type === "video").length;
+      const removedCount = selectedCount - curatedItems.length;
+
       setAgentStatus(
         "vision", "done",
-        `Found ${photoCount} photo${photoCount !== 1 ? "s" : ""} & ${videoCount} video${videoCount !== 1 ? "s" : ""}`
+        `Curated best ${curatedItems.length} item(s) (Removed ${removedCount} duplicates/low-quality)`
       );
 
       /* ── Scripting Agent — Groq LLM call ── */
@@ -190,7 +197,7 @@ export default function OrchestrationFlow() {
             voicePersona: config.voicePersona,
             voiceGender: config.voiceGender,
             primaryVision: config.primaryVision,
-            mediaCount: selectedCount,
+            mediaCount: curatedItems.length,
             videoMode: config.videoMode,
           }),
         });
@@ -231,11 +238,11 @@ export default function OrchestrationFlow() {
       setAgentStatus("render", "running", "Compositing frames…");
       setRenderProgress(0);
 
-      const imageUrls = selectedItems.filter((m) => m.type === "photo").map((m) => m.url);
+      const imageUrls = curatedItems.filter((m) => m.type === "photo").map((m) => m.url);
 
       if (imageUrls.length === 0) {
         await sleep(1500);
-        const firstVideo = selectedItems.find((m) => m.type === "video");
+        const firstVideo = curatedItems.find((m) => m.type === "video");
         if (firstVideo) setGeneratedVideoUrl(firstVideo.url);
         setAgentStatus("render", "done", "Video track composited ✓");
       } else {

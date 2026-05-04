@@ -3,10 +3,10 @@
  * -------------------
  * Client-side image compression using Canvas API.
  * Resizes images to max 1200px on the longer side and encodes as JPEG @ 80%.
- * Target: each photo ≤ ~300 KB, total 5 MB budget across all uploads.
+ * Target: each photo ≤ ~300 KB, total 30 MB budget across all uploads.
  */
 
-export const TOTAL_SIZE_LIMIT = 5 * 1024 * 1024; // 5 MB in bytes
+export const TOTAL_SIZE_LIMIT = 30 * 1024 * 1024; // 30 MB in bytes
 export const PER_FILE_SIZE_LIMIT = 2 * 1024 * 1024; // 2 MB per photo
 const MAX_DIMENSION = 1200; // px
 const JPEG_QUALITY  = 0.80;
