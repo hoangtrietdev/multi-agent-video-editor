@@ -1,9 +1,12 @@
 "use client";
 import Image from "next/image";
+import { useRouter } from "next/router";
 import { useOrchestrationStore } from "@/store/orchestrationStore";
 
 export default function TopAppBar({ title }: { title?: string }) {
   const step = useOrchestrationStore((s) => s.step);
+  const router = useRouter();
+  const isHome = router.pathname === "/";
 
   const stepLabel: Record<typeof step, string> = {
     select: "Select Media",
@@ -50,20 +53,43 @@ export default function TopAppBar({ title }: { title?: string }) {
           position: "relative",
         }}
       >
-        {/* Logo mark */}
-        <div style={{ position: "absolute", left: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-          <div
-            style={{
-              width: "32px",
-              height: "32px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Image src="/icon-192.svg" alt="Logo" width={32} height={32} priority />
+        {/* Logo mark or Back button */}
+        {isHome ? (
+          <div style={{ position: "absolute", left: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <div
+              style={{
+                width: "32px",
+                height: "32px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Image src="/icon-192.svg" alt="Logo" width={32} height={32} priority />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ position: "absolute", left: 0, display: "flex", alignItems: "center" }}>
+            <button
+              onClick={() => router.push("/")}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--color-slate-300)",
+                cursor: "pointer",
+                padding: "8px 8px 8px 0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+              aria-label="Go back"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Centered title */}
         <h1
@@ -79,22 +105,24 @@ export default function TopAppBar({ title }: { title?: string }) {
         </h1>
 
         {/* Right badge — step indicator */}
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            background: "rgba(99,102,241,0.12)",
-            border: "1px solid rgba(99,102,241,0.25)",
-            borderRadius: "20px",
-            padding: "3px 10px",
-            fontSize: "11px",
-            fontWeight: 600,
-            color: "var(--color-indigo-400)",
-            letterSpacing: "0.05em",
-          }}
-        >
-          {stepLabel[step]}
-        </div>
+        {isHome && (
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              background: "rgba(99,102,241,0.12)",
+              border: "1px solid rgba(99,102,241,0.25)",
+              borderRadius: "20px",
+              padding: "3px 10px",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "var(--color-indigo-400)",
+              letterSpacing: "0.05em",
+            }}
+          >
+            {stepLabel[step]}
+          </div>
+        )}
       </div>
     </header>
   );

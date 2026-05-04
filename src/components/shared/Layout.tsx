@@ -2,6 +2,8 @@ import Head from "next/head";
 import { ReactNode } from "react";
 import TopAppBar from "@/components/shared/TopAppBar";
 import BottomNavBar from "@/components/shared/BottomNavBar";
+import Footer from "@/components/shared/Footer";
+import CookieBanner from "@/components/shared/CookieBanner";
 
 interface LayoutProps {
   children: ReactNode;
@@ -63,13 +65,17 @@ export default function Layout({
             paddingTop: "var(--topbar-total)",
             paddingBottom: "var(--bottombar-total)",
             WebkitOverflowScrolling: "touch",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           {children}
+          <Footer />
         </main>
 
         {/* Fixed bottom nav */}
         <BottomNavBar />
+        <CookieBanner />
       </div>
     </>
   );
