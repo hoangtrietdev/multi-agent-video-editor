@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useOrchestrationStore } from "@/store/orchestrationStore";
 
 export default function TopAppBar({ title }: { title?: string }) {
@@ -55,15 +56,12 @@ export default function TopAppBar({ title }: { title?: string }) {
             style={{
               width: "32px",
               height: "32px",
-              borderRadius: "10px",
-              background: "linear-gradient(135deg, #6366F1 0%, #22D3EE 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "16px",
             }}
           >
-            🎼
+            <Image src="/icon-192.svg" alt="Logo" width={32} height={32} priority />
           </div>
         </div>
 
