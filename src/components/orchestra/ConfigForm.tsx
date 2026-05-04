@@ -301,6 +301,38 @@ export default function ConfigForm() {
               }} />
             </button>
           </div>
+
+          {/* Eco Mode toggle */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "8px 12px", background: "var(--color-slate-900)",
+            border: "1px solid var(--color-slate-800)", borderRadius: "10px" }}>
+            <div>
+              <p className="text-body-sm" style={{ margin: 0, fontWeight: 600, color: "var(--color-emerald-400)" }}>
+                🌱 Eco Mode
+              </p>
+              <p className="text-mono" style={{ margin: "1px 0 0", color: "var(--color-slate-500)" }}>
+                {config.ecoMode ? "Saves battery · Faster render (720p 15fps)" : "Standard render (1080p 30fps)"}
+              </p>
+            </div>
+            <button
+              type="button"
+              id="btn-toggle-eco"
+              onClick={() => setConfig({ ecoMode: !config.ecoMode })}
+              aria-label="Toggle eco mode"
+              style={{
+                width: "44px", height: "26px", borderRadius: "13px", border: "none",
+                background: config.ecoMode ? "var(--color-emerald-500)" : "var(--color-slate-700)",
+                position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0,
+              }}
+            >
+              <span style={{
+                position: "absolute", top: "3px",
+                left: config.ecoMode ? "21px" : "3px",
+                width: "20px", height: "20px", borderRadius: "50%",
+                background: "white", transition: "left 0.2s", display: "block",
+              }} />
+            </button>
+          </div>
         </div>
 
         {/* Vision prompt */}

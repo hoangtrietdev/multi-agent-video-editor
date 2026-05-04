@@ -137,6 +137,7 @@ export async function generateVideoFromImages(
   height = 1920,
   captions: CaptionSegment[] = [],
   audioConfig?: AudioConfig,
+  ecoMode = false,
 ): Promise<string> {
   if (urls.length === 0) throw new Error("No images provided");
 
@@ -220,15 +221,17 @@ export async function generateVideoFromImages(
   const ctx = canvas.getContext("2d", { willReadFrequently: false });
   if (!ctx) { liveCtx?.close().catch(() => {}); throw new Error("Canvas unavailable"); }
 
-  const canvasStream = canvas.captureStream(30);
+  const fps = ecoMode ? 15 : 30;
+  const canvasStream = canvas.captureStream(fps);
   const combined     = audioTrack
     ? new MediaStream([...canvasStream.getVideoTracks(), audioTrack])
     : canvasStream;
 
   /* ── 4. MediaRecorder ── */
   const mime = chooseMime();
+  const vBps = ecoMode ? 1_500_000 : 4_000_000;
   let recorder: MediaRecorder;
-  try { recorder = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 }); }
+  try { recorder = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: vBps, audioBitsPerSecond: 128_000 }); }
   catch  { recorder = new MediaRecorder(combined); }
 
   /* ── 5. Frame render loop ──

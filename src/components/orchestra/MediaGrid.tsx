@@ -327,6 +327,27 @@ export default function MediaGrid() {
         </p>
       </div>
 
+      {/* Eco-Friendly Banner */}
+      <div style={{
+        padding: "10px 14px",
+        background: "rgba(16, 185, 129, 0.08)",
+        border: "1px solid rgba(16, 185, 129, 0.25)",
+        borderRadius: "10px",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px"
+      }}>
+        <div style={{ fontSize: "20px" }}>🌱</div>
+        <div>
+          <p className="text-body-sm" style={{ margin: 0, fontWeight: 600, color: "var(--color-emerald-400)" }}>
+            Eco-Friendly by Default
+          </p>
+          <p style={{ margin: "2px 0 0", color: "var(--color-emerald-500)", fontSize: "11px", lineHeight: 1.3 }}>
+            Orchestra AI runs efficiently on your device to save battery and reduce carbon footprint.
+          </p>
+        </div>
+      </div>
+
       {/* Drop zone */}
       <DropZone onFiles={handleFiles} />
 

@@ -228,13 +228,26 @@ export default function VideoPreview() {
 
         {/* Audio badge — baked music + voice indicator */}
         <div style={{
-          position: "absolute", bottom: "50px", right: "8px",
+          position: "absolute", bottom: config.ecoMode ? "75px" : "50px", right: "8px",
           background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)",
           borderRadius: "6px", padding: "2px 6px",
           fontSize: "9px", color: "rgba(255,255,255,0.7)",
         }}>
           🎵{hasVoice ? " + 🎙" : ""}
         </div>
+
+        {/* Eco Mode badge */}
+        {config.ecoMode && (
+          <div style={{
+            position: "absolute", bottom: "50px", right: "8px",
+            background: "rgba(16,185,129,0.8)", backdropFilter: "blur(8px)",
+            borderRadius: "6px", padding: "2px 6px",
+            fontSize: "9px", fontWeight: 700, color: "white",
+            letterSpacing: "0.05em",
+          }}>
+            🌱 ECO
+          </div>
+        )}
 
         {/* Playback controls */}
         {generatedVideoUrl && (
@@ -302,6 +315,25 @@ export default function VideoPreview() {
             : "🎵 Background music — baked into video"}
         </p>
       </div>
+
+      {/* Eco Savings Note */}
+      {config.ecoMode && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            padding: "8px 12px",
+            background: "rgba(16, 185, 129, 0.08)",
+            border: "1px solid rgba(16, 185, 129, 0.2)",
+            borderRadius: "10px",
+            textAlign: "center"
+          }}
+        >
+          <p className="text-body-sm" style={{ margin: 0, color: "var(--color-emerald-400)", fontWeight: 500 }}>
+            🌱 Thanks to Eco Mode, you saved approx. <strong style={{ color: "var(--color-emerald-300)" }}>2.4g CO₂</strong> on this render!
+          </p>
+        </motion.div>
+      )}
 
       {/* Share message */}
       <AnimatePresence>

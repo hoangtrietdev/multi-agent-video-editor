@@ -41,6 +41,8 @@ export interface OrchestrationConfig {
   videoMode: VideoMode;
   /** Whether to play TTS narration in the preview player (cannot be baked into video) */
   includeVoice: boolean;
+  /** Eco mode: lazy load, lower render framerate/resolution to save battery & processing power */
+  ecoMode: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,6 +149,7 @@ export const useOrchestrationStore = create<OrchestrationStore>((set) => ({
     primaryVision: "",
     videoMode: "cinematic",
     includeVoice: true,
+    ecoMode: true,
   },
   setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
 

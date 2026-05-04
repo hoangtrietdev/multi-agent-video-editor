@@ -272,10 +272,11 @@ export default function OrchestrationFlow() {
               setAgentStatus("render", "running", progress.label);
             },
             msPerImage,
-            1080,
-            1920,
+            config.ecoMode ? 720 : 1080,
+            config.ecoMode ? 1280 : 1920,
             captions,
             audioConfig,
+            config.ecoMode,
           );
 
           setGeneratedVideoUrl(videoUrl);
