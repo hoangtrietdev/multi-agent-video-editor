@@ -74,10 +74,18 @@ export default function ComicOrchestrationFlow() {
   const orchestrationStarted = useOrchestrationStore((s) => s.orchestrationStarted);
   const setOrchestrationStarted = useOrchestrationStore((s) => s.setOrchestrationStarted);
 
-  const [agents, setAgents] = useState([
-    { id: "content", label: "Scripting Agent", icon: "✍️", status: "idle" as const, log: "Awaiting prompt..." },
-    { id: "layout", label: "Layout Agent", icon: "📐", status: "idle" as const, log: "Awaiting script..." },
-    { id: "cartoon", label: "Transform Agent", icon: "🎨", status: "idle" as const, log: "Awaiting layout..." },
+  type AgentInfo = {
+    id: string;
+    label: string;
+    icon: string;
+    status: "idle" | "running" | "done" | "error";
+    log: string;
+  };
+
+  const [agents, setAgents] = useState<AgentInfo[]>([
+    { id: "content", label: "Scripting Agent", icon: "✍️", status: "idle", log: "Awaiting prompt..." },
+    { id: "layout", label: "Layout Agent", icon: "📐", status: "idle", log: "Awaiting script..." },
+    { id: "cartoon", label: "Transform Agent", icon: "🎨", status: "idle", log: "Awaiting layout..." },
   ]);
   const [error, setError] = useState<string | null>(null);
 
