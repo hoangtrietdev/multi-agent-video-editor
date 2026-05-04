@@ -18,40 +18,40 @@ Run a **lightweight model first** for instant UX feedback, then a **powerful mod
 User uploads photos
         │
         ▼
-┌──────────────────────────────────┐
-│  ON-DEVICE  (browser / WebAssembly)  │  ~50–200ms, zero cost
-│  • EXIF extraction (date, GPS, camera) │
-│  • Face presence detection (MediaPipe)  │
-│  • Scene tag (MobileNet, TF.js)         │
-│  • Image quality score (blur, exposure) │
-│  • k-means cluster by date/location     │
-└────────────────┬─────────────────┘
+┌───────────────────────────────────────────┐
+│  ON-DEVICE  (browser / WebAssembly)       │  ~50–200ms, zero cost
+│  • EXIF extraction (date, GPS, camera)    │
+│  • Face presence detection (MediaPipe)    │
+│  • Scene tag (MobileNet, TF.js)           │
+│  • Image quality score (blur, exposure)   │
+│  • k-means cluster by date/location       │
+└────────────────┬──────────────────────────┘
                  │  Metadata JSON only (not raw images)
                  ▼
-┌──────────────────────────────────┐
-│  FAST TIER — Groq LPU            │  ~0.5–1.5s
-│  • Script draft: llama-3.1-8b   │  ← already in use
-│  • Mood/theme suggestion         │
-│  • Caption generation            │
-│  → Show draft to user immediately│
-└────────────────┬─────────────────┘
+┌───────────────────────────────────────────┐
+│  FAST TIER — Groq LPU                     │  ~0.5–1.5s
+│  • Script draft: llama-3.3-70b-versatile  │  ← already in use
+│  • Mood/theme suggestion                  │
+│  • Caption generation                     │
+│  → Show draft to user immediately         │
+└────────────────┬──────────────────────────┘
                  │  async, in background
                  ▼
-┌──────────────────────────────────┐
-│  QUALITY TIER — Groq 70B / GPT-4o│  ~2–5s
-│  • Richer narrative rewrite      │
-│  • Emotional arc (hook→body→cta) │
-│  • Memory Mode: personal tone    │
-│  → Replace draft when ready      │
-└────────────────┬─────────────────┘
+┌───────────────────────────────────────────┐
+│  QUALITY TIER — Groq 70B / GPT-4o         │  ~2–5s
+│  • Richer narrative rewrite               │
+│  • Emotional arc (hook→body→cta)          │
+│  • Memory Mode: personal tone             │
+│  → Replace draft when ready               │
+└────────────────┬──────────────────────────┘
                  │
                  ▼
-┌──────────────────────────────────┐
-│  RENDER TIER — Client-side       │  Real-time, parallel with quality tier
-│  • TTS: macOS `say` / ElevenLabs │
-│  • Music: OfflineAudioContext    │
-│  • Video: Canvas + MediaRecorder │
-└──────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│  RENDER TIER — Client-side                │  Real-time, parallel with quality tier
+│  • TTS: macOS `say` / ElevenLabs          │
+│  • Music: OfflineAudioContext             │
+│  • Video: Canvas + MediaRecorder          │
+└───────────────────────────────────────────┘
 ```
 
 ---
