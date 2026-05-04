@@ -5,6 +5,8 @@ import { useOrchestrationStore } from "@/store/orchestrationStore";
 
 export default function TopAppBar({ title }: { title?: string }) {
   const step = useOrchestrationStore((s) => s.step);
+  const appMode = useOrchestrationStore((s) => s.appMode);
+  const setAppMode = useOrchestrationStore((s) => s.setAppMode);
   const router = useRouter();
   const isHome = router.pathname === "/";
 
@@ -104,24 +106,27 @@ export default function TopAppBar({ title }: { title?: string }) {
           {title ?? stepLabel[step]}
         </h1>
 
-        {/* Right badge — step indicator */}
+        {/* Right mode toggle */}
         {isHome && (
-          <div
+          <button
+            onClick={() => setAppMode(appMode === "video" ? "comic" : "video")}
             style={{
               position: "absolute",
               right: 0,
-              background: "rgba(99,102,241,0.12)",
-              border: "1px solid rgba(99,102,241,0.25)",
+              background: appMode === "video" ? "rgba(99,102,241,0.12)" : "rgba(245,158,11,0.12)",
+              border: `1px solid ${appMode === "video" ? "rgba(99,102,241,0.25)" : "rgba(245,158,11,0.25)"}`,
               borderRadius: "20px",
-              padding: "3px 10px",
+              padding: "4px 12px",
               fontSize: "11px",
-              fontWeight: 600,
-              color: "var(--color-indigo-400)",
+              fontWeight: 700,
+              color: appMode === "video" ? "var(--color-indigo-400)" : "var(--color-amber-400)",
               letterSpacing: "0.05em",
+              cursor: "pointer",
+              transition: "all 0.2s ease"
             }}
           >
-            {stepLabel[step]}
-          </div>
+            {appMode === "video" ? "🎬 Video" : "🗯 Comic"}
+          </button>
         )}
       </div>
     </header>

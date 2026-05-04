@@ -10,6 +10,23 @@ export type AgentStatus = "idle" | "running" | "done" | "error";
 export type VideoMode = "cinematic" | "memory";
 export type VoiceGender = "male" | "female";
 
+export interface ComicPanel {
+  panelIndex: number;
+  caption?: string;
+  speechBubble?: string;
+  layoutStyle?: string;
+}
+
+export interface ComicPage {
+  pageNumber: number;
+  panels: ComicPanel[];
+}
+
+export interface ComicScript {
+  title: string;
+  pages: ComicPage[];
+}
+
 export interface AgentState {
   id: AgentId;
   label: string;
@@ -43,6 +60,8 @@ export interface OrchestrationConfig {
   includeVoice: boolean;
   /** Eco mode: lazy load, lower render framerate/resolution to save battery & processing power */
   ecoMode: boolean;
+  /** Custom prompt for comic generation */
+  comicPrompt: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -60,6 +79,8 @@ const INITIAL_AGENTS: AgentState[] = [
 /* ------------------------------------------------------------------ */
 interface OrchestrationStore {
   /* Navigation */
+  appMode: "video" | "comic";
+  setAppMode: (mode: "video" | "comic") => void;
   step: FlowStep;
   setStep: (step: FlowStep) => void;
 
@@ -88,6 +109,10 @@ interface OrchestrationStore {
   generatedVideoUrl: string | null;
   setGeneratedVideoUrl: (url: string | null) => void;
 
+  /* Generated Comic Script */
+  generatedComic: ComicScript | null;
+  setGeneratedComic: (comic: ComicScript | null) => void;
+
   /* Render progress (0–100) */
   renderProgress: number;
   setRenderProgress: (p: number) => void;
@@ -106,6 +131,8 @@ interface OrchestrationStore {
 /* ------------------------------------------------------------------ */
 export const useOrchestrationStore = create<OrchestrationStore>((set) => ({
   /* Navigation */
+  appMode: "video",
+  setAppMode: (appMode) => set({ appMode }),
   step: "select",
   setStep: (step) => set({ step }),
 
@@ -150,6 +177,7 @@ export const useOrchestrationStore = create<OrchestrationStore>((set) => ({
     videoMode: "cinematic",
     includeVoice: true,
     ecoMode: true,
+    comicPrompt: "",
   },
   setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
 
@@ -170,6 +198,10 @@ export const useOrchestrationStore = create<OrchestrationStore>((set) => ({
   /* Generated video */
   generatedVideoUrl: null,
   setGeneratedVideoUrl: (url) => set({ generatedVideoUrl: url }),
+
+  /* Generated Comic */
+  generatedComic: null,
+  setGeneratedComic: (comic) => set({ generatedComic: comic }),
 
   /* Render progress */
   renderProgress: 0,

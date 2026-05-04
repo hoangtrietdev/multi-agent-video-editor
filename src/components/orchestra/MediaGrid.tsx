@@ -110,6 +110,7 @@ function MediaCell({ item, index }: { item: MediaItem; index: number }) {
           color: "var(--color-slate-400)",
           fontSize: "12px",
           lineHeight: 1,
+          zIndex: 10,
         }}
       >
         ✕
@@ -165,7 +166,7 @@ function MediaCell({ item, index }: { item: MediaItem; index: number }) {
 /* ------------------------------------------------------------------ */
 /*  Drop Zone                                                           */
 /* ------------------------------------------------------------------ */
-function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
+export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -260,6 +261,7 @@ export default function MediaGrid() {
   const selectedCount = useOrchestrationStore((s) => s.selectedCount);
   const setStep       = useOrchestrationStore((s) => s.setStep);
   const clearMediaItems = useOrchestrationStore((s) => s.clearMediaItems);
+  const appMode       = useOrchestrationStore((s) => s.appMode);
 
   const [compressing, setCompressing] = useState(false);
   const [sizeError, setSizeError]     = useState("");
@@ -318,12 +320,14 @@ export default function MediaGrid() {
   return (
     <section style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Header */}
-      <div>
-        <h2 className="text-display" style={{ margin: 0, marginBottom: "2px" }}>
-          Select Media
+      <div style={{ textAlign: "center" }}>
+        <h2 className="text-display" style={{ margin: 0, color: appMode === "video" ? "var(--color-indigo-400)" : "var(--color-amber-400)" }}>
+          {appMode === "video" ? "🎬 AI Video Creator" : "🗯 AI Comic Creator"}
         </h2>
-        <p className="text-body-sm" style={{ color: "var(--color-slate-400)", margin: 0 }}>
-          Upload photos &amp; videos to generate your AI video
+        <p className="text-body-sm" style={{ color: "var(--color-slate-400)", marginTop: "4px" }}>
+          {appMode === "video" 
+            ? "Upload photos & videos to generate your AI video."
+            : "Transform your photos into a 10-page comic book."}
         </p>
       </div>
 
@@ -475,12 +479,13 @@ export default function MediaGrid() {
             <button
               id="btn-continue-to-configure"
               className="btn-primary"
+              style={appMode === "comic" ? { background: "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)" } : {}}
               onClick={() => setStep("configure")}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
-              Generate video from {selectedCount} file{selectedCount > 1 ? "s" : ""}
+              {appMode === "video" ? "Generate video" : "Generate comic"} from {selectedCount} file{selectedCount > 1 ? "s" : ""}
             </button>
           </motion.div>
         )}
