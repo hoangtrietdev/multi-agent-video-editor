@@ -1,40 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# 🚀 Orchestra AI
 
-## Getting Started
+Orchestra AI is a next-generation, on-device AI creative platform that empowers users to turn raw personal media (photos and videos) into fully realized **Cinematic Videos** or high-quality **Comic Books**. 
 
-First, run the development server:
+By shifting heavy AI inference, image filtering, and media rendering directly to the client's browser, Orchestra AI ensures **maximum user privacy**, **zero cloud storage costs**, and a highly **eco-friendly** approach to generative AI.
 
+## 🌟 Key Features
+
+### 1. Dual Creation Modes
+* **🎬 Cinematic Video Generator:** Synthesizes uploaded media into a seamless `.mp4`/`.webm` video. It features dynamic Ken Burns (pan/zoom) effects, smooth crossfades, and AI-generated Text-to-Speech (TTS) voiceovers.
+* **🗯 Comic Book Creator:** Transforms real photos into an illustrated, multi-page comic book. Features three distinct art styles (Anime, Manga, Western Comic) generated entirely via client-side SVG shaders. Exports directly to a high-resolution PDF.
+
+### 2. Multi-Agent Orchestration Flow
+Users interact with a transparent "Agentic Workflow" UI that visualizes how the AI collaborates:
+* **👁 Vision Agent (TensorFlow.js):** Runs `BlazeFace` and `MobileNet` locally to detect faces, tag semantic subjects, score image quality, and deduplicate identical photos.
+* **✍️ Scripting Agent (Groq LLM):** Uses the ultra-fast Groq API to generate creative narratives, dialogues, or voiceover scripts based on the user's prompt.
+* **📐 Layout / Audio Agent:** Arranges comic panels dynamically or synthesizes Text-to-Speech audio.
+* **🎨 Transform / Render Agent:** Applies complex WebGL/SVG shader filters or renders the final video file.
+
+### 3. Privacy-First & Eco-Friendly
+* **Zero Server Storage:** User photos and videos **never** leave the device. All media processing happens locally in the browser memory.
+* **On-Device Rendering:** Video encoding uses the native `MediaRecorder` and HTML5 Canvas APIs. PDF generation uses `html2canvas` and `jspdf`.
+* **Low Carbon Footprint:** By avoiding heavy cloud-GPU rendering clusters, Orchestra AI operates as a highly sustainable "Green AI" tool.
+
+## 🛠 Technology Stack
+* **Framework:** Next.js, React, TypeScript
+* **State Management:** Zustand
+* **Animations:** Framer Motion
+* **Machine Learning:** TensorFlow.js (`@tensorflow/tfjs`, `blazeface`, `mobilenet`), Groq API (LLM)
+* **Media Processing:** HTML5 Canvas, MediaRecorder, `jspdf`, `html2canvas`
+
+## 🚀 Getting Started
+
+1. Install dependencies:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Set up your environment variables:
+Create a `.env.local` file and add your Groq API key:
+```env
+GROQ_API_KEY=your_api_key_here
+```
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+3. Run the development server:
+```bash
+npm run dev
+```
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
-
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
-
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+Open [http://localhost:3000](http://localhost:3000) with your browser to start creating!
