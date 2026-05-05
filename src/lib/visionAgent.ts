@@ -1,4 +1,7 @@
 import { MediaItem } from "@/store/orchestrationStore";
+import * as tf from "@tensorflow/tfjs";
+import * as blazeface from "@tensorflow-models/blazeface";
+import * as mobilenet from "@tensorflow-models/mobilenet";
 
 interface AnalysisResult {
   blurVariance: number;
@@ -6,6 +9,19 @@ interface AnalysisResult {
   faceCount: number;
   hash: string;
   finalScore: number;
+  tags: string[];
+}
+
+let faceModel: blazeface.BlazeFaceModel | null = null;
+let classificationModel: mobilenet.MobileNet | null = null;
+
+async function initTFModels(onProgress?: (msg: string) => void) {
+  if (!faceModel || !classificationModel) {
+    if (onProgress) onProgress("Loading AI Vision Models (TF.js)...");
+    await tf.ready();
+    if (!faceModel) faceModel = await blazeface.load();
+    if (!classificationModel) classificationModel = await mobilenet.load({ version: 2, alpha: 0.5 });
+  }
 }
 
 /** 1. Extract 8x8 average hash (aHash) for deduplication */
@@ -92,21 +108,23 @@ async function analyzeImage(url: string): Promise<AnalysisResult> {
     img.crossOrigin = "anonymous";
     img.onload = async () => {
       const hash = getAHash(img);
-
-      // Face detection (using browser's experimental FaceDetector if available)
       let faceCount = 0;
+      let tags: string[] = [];
+
       try {
-        if ("FaceDetector" in window) {
-          // @ts-ignore
-          const detector = new window.FaceDetector();
-          const faces = await detector.detect(img);
+        if (faceModel) {
+          const faces = await faceModel.estimateFaces(img, false);
           faceCount = faces.length;
         }
+        if (classificationModel) {
+          const predictions = await classificationModel.classify(img, 3);
+          tags = predictions.filter(p => p.probability > 0.1).map(p => p.className);
+        }
       } catch (e) {
-        // Fallback or ignore if not supported/permitted
+        console.error("TF.js inference error:", e);
       }
 
-      // Draw downscaled to fast-process pixel math
+      // Draw downscaled to fast-process pixel math for exposure/blur
       const scale = Math.min(1, 400 / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
@@ -115,7 +133,7 @@ async function analyzeImage(url: string): Promise<AnalysisResult> {
       c.height = h;
       const ctx = c.getContext("2d");
       if (!ctx) {
-        return resolve({ blurVariance: 0, exposureScore: 0, faceCount, hash, finalScore: 0 });
+        return resolve({ blurVariance: 0, exposureScore: 0, faceCount, hash, finalScore: 0, tags });
       }
       ctx.drawImage(img, 0, 0, w, h);
       const data = ctx.getImageData(0, 0, w, h).data;
@@ -124,16 +142,16 @@ async function analyzeImage(url: string): Promise<AnalysisResult> {
       const blurVariance = getLaplacianVariance(data, w, h);
 
       // Final scoring heuristic:
-      // normalizedBlur: typically 0 (very blurry) to 1 (sharp, variance > 1000)
       const normalizedBlur = Math.min(1, blurVariance / 1000);
       
-      // Weights: 50% sharp, 30% exposure, 20% faces
-      const finalScore = normalizedBlur * 0.5 + exposureScore * 0.3 + (faceCount > 0 ? 0.2 : 0);
+      // We give a big boost to photos with faces or well-defined subjects (tags)
+      const semanticBonus = (faceCount > 0 ? 0.3 : 0) + (tags.length > 0 ? 0.1 : 0);
+      const finalScore = normalizedBlur * 0.4 + exposureScore * 0.2 + semanticBonus;
 
-      resolve({ blurVariance, exposureScore, faceCount, hash, finalScore });
+      resolve({ blurVariance, exposureScore, faceCount, hash, finalScore, tags });
     };
     img.onerror = () => {
-      resolve({ blurVariance: 0, exposureScore: 0, faceCount: 0, hash: "", finalScore: 0 });
+      resolve({ blurVariance: 0, exposureScore: 0, faceCount: 0, hash: "", finalScore: 0, tags: [] });
     };
     img.src = url;
   });
@@ -149,6 +167,9 @@ export async function processMediaOnDevice(
   const photos = items.filter((i) => i.type === "photo");
 
   if (photos.length === 0) return items.slice(0, maxOutput);
+
+  // Initialize TF models first
+  await initTFModels(onProgress);
 
   // 1. Analyze all photos
   const analyzed = await Promise.all(
