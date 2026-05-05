@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOrchestrationStore, ComicScript } from "@/store/orchestrationStore";
+import { processMediaOnDevice } from "@/lib/visionAgent";
 
 function ComicAgentRow({ agent, isLast }: { agent: any; isLast: boolean }) {
   const isDone = agent.status === "done";
@@ -98,12 +99,19 @@ export default function ComicOrchestrationFlow() {
     setOrchestrationStarted(true);
 
     const run = async () => {
-      updateAgent("content", "running", "Drafting story via Groq...");
+      updateAgent("content", "running", "Analyzing and filtering photos on device...");
       try {
+        const finalMedia = await processMediaOnDevice(
+          selectedItems,
+          (msg) => updateAgent("content", "running", msg),
+          15 // limit to 15 best photos for comic
+        );
+
+        updateAgent("content", "running", "Drafting story via Groq...");
         const res = await fetch("/api/comic", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: config.comicPrompt || "A fun comic", mediaCount: selectedItems.length })
+          body: JSON.stringify({ prompt: config.comicPrompt || "A fun comic", mediaCount: finalMedia.length })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Generation failed");

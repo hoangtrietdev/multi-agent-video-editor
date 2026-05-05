@@ -1,8 +1,32 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useOrchestrationStore } from "@/store/orchestrationStore";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+function FilteredImage({ src, filterId }: { src: string; filterId: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      // Apply the SVG filter directly to the canvas rendering context
+      ctx.filter = `url(#${filterId})`;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = src;
+  }, [src, filterId]);
+
+  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
+}
 
 export default function ComicPreview() {
   const generatedComic = useOrchestrationStore((s) => s.generatedComic);
@@ -91,7 +115,7 @@ export default function ComicPreview() {
                 </div>
               )}
               <div style={{ position: "relative", flex: 1, minHeight: isExportMode ? "400px" : "200px" }}>
-                <img src={item.url} style={{ width: "100%", height: "100%", objectFit: "cover", filter: `url(#${activeFilterId})` }} alt="comic panel" crossOrigin="anonymous" />
+                <FilteredImage src={item.url} filterId={activeFilterId} />
                 {panel.speechBubble && (
                   <div style={{
                     position: "absolute", bottom: "10px", right: "10px", left: "20px",

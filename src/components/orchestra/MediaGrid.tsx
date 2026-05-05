@@ -166,7 +166,7 @@ function MediaCell({ item, index }: { item: MediaItem; index: number }) {
 /* ------------------------------------------------------------------ */
 /*  Drop Zone                                                           */
 /* ------------------------------------------------------------------ */
-export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
+export function DropZone({ onFiles, acceptsVideos = true }: { onFiles: (files: FileList) => void, acceptsVideos?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -235,7 +235,7 @@ export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
           <span style={{ color: "var(--color-indigo-400)", fontWeight: 600 }}>browse</span>
         </p>
         <p style={{ margin: "8px 0 0", color: "var(--color-slate-600)", fontSize: "11px", letterSpacing: "0.03em" }}>
-          JPG · PNG · WEBP · MP4 · MOV &nbsp;·&nbsp; <strong style={{ color: "var(--color-slate-500)" }}>Max 30 MB total</strong>
+          {acceptsVideos ? "JPG · PNG · WEBP · MP4 · MOV" : "JPG · PNG · WEBP"} &nbsp;·&nbsp; <strong style={{ color: "var(--color-slate-500)" }}>Max 30 MB total</strong>
         </p>
       </div>
 
@@ -244,7 +244,7 @@ export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
         type="file"
         id="media-file-input"
         multiple
-        accept="image/jpeg,image/png,image/webp,image/gif,image/heic,video/mp4,video/quicktime,video/webm,video/x-msvideo"
+        accept={acceptsVideos ? "image/jpeg,image/png,image/webp,image/gif,image/heic,video/mp4,video/quicktime,video/webm,video/x-msvideo" : "image/jpeg,image/png,image/webp,image/gif,image/heic"}
         style={{ display: "none" }}
         onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }}
       />
@@ -272,7 +272,12 @@ export default function MediaGrid() {
 
     // Separate images and videos
     const imageFiles = raw.filter((f) => f.type.startsWith("image/"));
-    const videoFiles = raw.filter((f) => f.type.startsWith("video/"));
+    let videoFiles = raw.filter((f) => f.type.startsWith("video/"));
+    
+    // Comic mode strictly rejects videos
+    if (appMode === "comic") {
+      videoFiles = [];
+    }
 
     // Per-video limit: 50 MB
     const validVideos = videoFiles.filter((f) => f.size <= 50 * 1024 * 1024);
@@ -353,7 +358,7 @@ export default function MediaGrid() {
       </div>
 
       {/* Drop zone */}
-      <DropZone onFiles={handleFiles} />
+      <DropZone onFiles={handleFiles} acceptsVideos={appMode === "video"} />
 
       {/* Stats row + size budget bar */}
       {mediaItems.length > 0 && (
